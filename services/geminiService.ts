@@ -142,25 +142,65 @@ const processApiResponse = (response: GenerateContentResponse): string => {
 }
 
 export const validateApiKey = async (apiKey: string): Promise<boolean> => {
-  if (!apiKey) return false;
+  if (!apiKey || !apiKey.trim()) return false;
+  
+  // Basic format check - Gemini API keys typically start with "AIza"
+  if (!apiKey.startsWith('AIza')) {
+    console.warn("API Key format doesn't match expected Gemini API key format");
+    // Still try to validate, as format might vary
+  }
   
   // Create a temporary instance for validation
   const ai = new GoogleGenAI({ apiKey });
 
   try {
-    // We use a lightweight model 'gemini-2.5-flash' for a quick validation check.
-    // We request a single token or minimal response to keep it fast/cheap.
-    await ai.models.generateContent({
-      model: 'gemini-2.5-flash-latest',
-      contents: { parts: [{ text: 'Confirm API access' }] },
-      config: {
-          maxOutputTokens: 1, 
+    // We use a lightweight model for a quick validation check.
+    // Try multiple model names in case one is unavailable
+    const modelsToTry = [
+      'gemini-2.0-flash-exp',
+      'gemini-1.5-flash',
+      'gemini-pro',
+    ];
+
+    for (const model of modelsToTry) {
+      try {
+        await ai.models.generateContent({
+          model: model,
+          contents: { parts: [{ text: 'test' }] },
+          config: {
+            maxOutputTokens: 1,
+          }
+        });
+        return true;
+      } catch (modelError) {
+        // If it's a model-specific error (not auth), try next model
+        const errorMsg = modelError instanceof Error ? modelError.message : String(modelError);
+        if (!errorMsg.includes('API key') && !errorMsg.includes('401') && !errorMsg.includes('403') && !errorMsg.includes('PERMISSION')) {
+          continue; // Try next model
+        }
+        // If it's an auth error, fail immediately
+        throw modelError;
       }
-    });
+    }
+    
+    // If all models failed but not due to auth, consider it valid
     return true;
   } catch (error) {
-    console.warn("API Key validation check failed:", error);
-    return false;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.warn("API Key validation check failed:", errorMsg);
+    
+    // Check for specific auth errors
+    if (errorMsg.includes('API key') || 
+        errorMsg.includes('401') || 
+        errorMsg.includes('403') || 
+        errorMsg.includes('PERMISSION_DENIED') ||
+        errorMsg.includes('invalid')) {
+      return false;
+    }
+    
+    // For other errors (network, model unavailable, etc.), assume key might be valid
+    // User can test it when generating
+    return true;
   }
 };
 

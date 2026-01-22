@@ -52,18 +52,23 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
         return;
     }
 
+    // Save the key immediately (validation is optional)
+    storeApiKey(apiKey);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 3000);
+
+    // Validate in the background (non-blocking)
     setIsValidating(true);
     try {
         const isValid = await validateApiKey(apiKey);
-        if (isValid) {
-            storeApiKey(apiKey);
-            setShowSuccess(true);
-            setTimeout(() => setShowSuccess(false), 3000);
-        } else {
-            setValidationError('Invalid API Key. Please check permissions and try again.');
+        if (!isValid) {
+            // Show warning but don't prevent saving
+            setValidationError('Warning: API key validation failed. The key has been saved, but please verify it works when generating images.');
         }
     } catch (e) {
-        setValidationError('Validation failed. Please check your connection.');
+        // Validation failed but key is already saved
+        console.warn('API key validation failed:', e);
+        setValidationError('Warning: Could not validate API key. The key has been saved - please test it when generating images.');
     } finally {
         setIsValidating(false);
     }
