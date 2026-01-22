@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { CreditCardIcon, KeyIcon, SparklesIcon, SaveIcon } from './IconComponents';
-import { getStoredApiKey, storeApiKey } from '../services/apiKeyService';
+import { getStoredApiKey, storeApiKey, getStoredWaveSpeedApiKey, storeWaveSpeedApiKey } from '../services/apiKeyService';
 import { validateApiKey } from '../services/geminiService';
+import { validateWaveSpeedApiKey } from '../services/wavespeedService';
 
 interface CreatorSettingsModalProps {
   isOpen: boolean;
@@ -16,11 +17,20 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
   const [isValidating, setIsValidating] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // WaveSpeed API Key state
+  const [waveSpeedApiKey, setWaveSpeedApiKey] = useState('');
+  const [showWaveSpeedSuccess, setShowWaveSpeedSuccess] = useState(false);
+  const [isValidatingWaveSpeed, setIsValidatingWaveSpeed] = useState(false);
+  const [waveSpeedValidationError, setWaveSpeedValidationError] = useState<string | null>(null);
+
   useEffect(() => {
     if (isOpen) {
       setApiKey(getStoredApiKey() || '');
+      setWaveSpeedApiKey(getStoredWaveSpeedApiKey() || '');
       setShowSuccess(false);
+      setShowWaveSpeedSuccess(false);
       setValidationError(null);
+      setWaveSpeedValidationError(null);
     }
   }, [isOpen]);
 
@@ -56,6 +66,41 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
         setValidationError('Validation failed. Please check your connection.');
     } finally {
         setIsValidating(false);
+    }
+  };
+
+  const handleWaveSpeedApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setWaveSpeedApiKey(e.target.value);
+    setShowWaveSpeedSuccess(false);
+    setWaveSpeedValidationError(null);
+  };
+
+  const handleSaveWaveSpeedKey = async () => {
+    setWaveSpeedValidationError(null);
+    setShowWaveSpeedSuccess(false);
+
+    // If key is cleared, just remove it without validation
+    if (!waveSpeedApiKey.trim()) {
+        storeWaveSpeedApiKey('');
+        setShowWaveSpeedSuccess(true);
+        setTimeout(() => setShowWaveSpeedSuccess(false), 3000);
+        return;
+    }
+
+    setIsValidatingWaveSpeed(true);
+    try {
+        const isValid = await validateWaveSpeedApiKey(waveSpeedApiKey);
+        if (isValid) {
+            storeWaveSpeedApiKey(waveSpeedApiKey);
+            setShowWaveSpeedSuccess(true);
+            setTimeout(() => setShowWaveSpeedSuccess(false), 3000);
+        } else {
+            setWaveSpeedValidationError('Invalid API Key. Please check your WaveSpeed API key.');
+        }
+    } catch (e) {
+        setWaveSpeedValidationError('Validation failed. Please check your connection.');
+    } finally {
+        setIsValidatingWaveSpeed(false);
     }
   };
 
@@ -198,6 +243,97 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
                          <div className="bg-[#0a0c10] border border-white/5 rounded-xl p-4">
                             <p className="text-xs text-gray-500 font-medium mb-1 uppercase">Model Version</p>
                             <p className="text-sm text-white font-bold">Gemini 3 Pro Vision</p>
+                         </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* WaveSpeed API Configuration */}
+            <div className="space-y-4">
+                <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Halyxis+ Infrastructure</h3>
+                <div className="bg-[#050608] border border-white/5 rounded-2xl p-6">
+                    <div className="flex items-start gap-4 mb-8">
+                        <div className="p-3 bg-gray-900 rounded-xl border border-white/10 text-gray-300">
+                            <KeyIcon className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h4 className="text-base font-bold text-white mb-1">WaveSpeed API</h4>
+                            <p className="text-gray-400 text-sm leading-relaxed max-w-md">
+                                Power your Halyxis+ features with WaveSpeed's advanced image editing API. Get your API key from <a href="https://wavespeed.ai/accesskey" target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:text-teal-300 underline">wavespeed.ai/accesskey</a>.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    {/* WaveSpeed API Key Input Section */}
+                    <div className="mb-8">
+                         <label className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 block pl-1">
+                             WaveSpeed API Key
+                         </label>
+                         <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="relative flex-grow group">
+                                <input 
+                                    type="password" 
+                                    value={waveSpeedApiKey}
+                                    onChange={handleWaveSpeedApiKeyChange}
+                                    placeholder="Paste your WaveSpeed API Key here"
+                                    className={`w-full bg-[#0a0c10] border rounded-xl py-3.5 px-4 text-white font-mono text-sm focus:outline-none transition-colors placeholder-gray-700 ${waveSpeedValidationError ? 'border-red-500/50 focus:border-red-500' : 'border-white/10 focus:border-teal-500/50'}`}
+                                />
+                                {!waveSpeedApiKey && (
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        <span className="text-gray-600 text-[10px] uppercase tracking-wider font-bold bg-[#0a0c10] pl-2">
+                                            Not Set
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                onClick={handleSaveWaveSpeedKey}
+                                disabled={isValidatingWaveSpeed}
+                                className={`bg-teal-600 hover:bg-teal-500 text-white px-6 py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-teal-900/20 flex items-center justify-center gap-2 flex-shrink-0 active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed`}
+                            >
+                                {isValidatingWaveSpeed ? (
+                                    <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                ) : (
+                                    <SaveIcon className="w-4 h-4" />
+                                )}
+                                {isValidatingWaveSpeed ? 'Verifying...' : 'Apply Key'}
+                            </button>
+                         </div>
+                         <div className="flex justify-between items-start mt-2 pl-1 min-h-[20px]">
+                            {waveSpeedValidationError ? (
+                                <p className="text-xs text-red-400 font-bold animate-fade-in flex items-center gap-1">
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    {waveSpeedValidationError}
+                                </p>
+                            ) : (
+                                <p className="text-xs text-gray-600 leading-relaxed max-w-[80%]">
+                                    Required for Halyxis+ features. Get your key from <a href="https://wavespeed.ai/accesskey" target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:text-teal-300 underline">wavespeed.ai/accesskey</a>.
+                                </p>
+                            )}
+                            
+                            {showWaveSpeedSuccess && !waveSpeedValidationError && (
+                                <span className="text-xs text-teal-400 font-bold flex items-center gap-1.5 animate-fade-in whitespace-nowrap">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]"></div>
+                                    {waveSpeedApiKey ? 'Active & Saved' : 'Removed'}
+                                </span>
+                            )}
+                         </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                         <div className="bg-[#0a0c10] border border-white/5 rounded-xl p-4">
+                            <p className="text-xs text-gray-500 font-medium mb-1 uppercase">Connection Status</p>
+                            <p className={`text-sm font-bold flex items-center gap-2 ${waveSpeedApiKey ? 'text-teal-400' : 'text-gray-600'}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${waveSpeedApiKey ? 'bg-teal-400' : 'bg-gray-600'}`}></span>
+                                {waveSpeedApiKey ? 'Pipeline Active' : 'Not Configured'}
+                            </p>
+                         </div>
+                         <div className="bg-[#0a0c10] border border-white/5 rounded-xl p-4">
+                            <p className="text-xs text-gray-500 font-medium mb-1 uppercase">Model Version</p>
+                            <p className="text-sm text-white font-bold">WAN-2.6 Image Edit</p>
                          </div>
                     </div>
                 </div>
