@@ -6,7 +6,8 @@ import { ImageDisplay } from './ImageDisplay';
 import { editImageWithWaveSpeed, editImageWithWaveSpeedMultiple } from '../services/wavespeedService';
 import { fileToBase64, blobToBase64 } from '../utils/fileUtils';
 import { getWaveSpeedApiKey } from '../services/apiKeyService';
-import type { UploadedImage, AspectRatio } from '../types';
+import { saveHistoryItemToDb } from '../utils/storageUtils';
+import type { UploadedImage, AspectRatio, HistoryItem } from '../types';
 
 export const HalyxisPlusView: React.FC = () => {
   const [originalImage, setOriginalImage] = useState<UploadedImage | null>(null);
@@ -172,6 +173,18 @@ export const HalyxisPlusView: React.FC = () => {
 
       setGeneratedImage(imageUrl);
       setLoadingStatus('');
+
+      // Save to history
+      const newHistoryItem: HistoryItem = {
+        id: new Date().toISOString() + Math.random(),
+        imageUrl: imageUrl,
+        prompt: prompt,
+        aspectRatio: aspectRatio,
+        source: 'wavespeed',
+      };
+      
+      // Fire and forget save to DB
+      saveHistoryItemToDb(newHistoryItem).catch(err => console.error("Failed to save WaveSpeed history:", err));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       console.error(err);
@@ -180,7 +193,7 @@ export const HalyxisPlusView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [originalImage, additionalImages, prompt, enablePromptExpansion, seed]);
+  }, [originalImage, additionalImages, prompt, enablePromptExpansion, seed, aspectRatio]);
 
   const originalImageDataUrl = originalImage
     ? `data:${originalImage.mimeType};base64,${originalImage.base64}`

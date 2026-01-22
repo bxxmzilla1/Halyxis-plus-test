@@ -35,6 +35,7 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [wavespeedHistory, setWavespeedHistory] = useState<HistoryItem[]>([]);
   const [mode, setMode] = useState<EditMode>('reference');
   const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -75,8 +76,10 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     const loadHistory = async () => {
-      const savedHistory = await getHistoryFromDb();
-      setHistory(savedHistory);
+      const geminiHistory = await getHistoryFromDb('gemini');
+      const wavespeedHistory = await getHistoryFromDb('wavespeed');
+      setHistory(geminiHistory);
+      setWavespeedHistory(wavespeedHistory);
     };
     loadHistory();
   }, [user]);
@@ -306,6 +309,7 @@ const App: React.FC = () => {
         referenceImageUrl: referenceImageDataUrl, // This will be undefined for multi and prompt modes
         prompt: prompt,
         aspectRatio: aspectRatio,
+        source: 'gemini',
       };
       
       const updatedHistory = [newHistoryItem, ...history];
@@ -398,7 +402,14 @@ const App: React.FC = () => {
           user={user} 
           onLogout={handleLogout}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
-          onToggleHistory={() => setIsHistorySidebarOpen(true)}
+          onToggleHistory={async () => {
+            // Reload history when opening sidebar
+            const geminiHistory = await getHistoryFromDb('gemini');
+            const wavespeedHistory = await getHistoryFromDb('wavespeed');
+            setHistory(geminiHistory);
+            setWavespeedHistory(wavespeedHistory);
+            setIsHistorySidebarOpen(true);
+          }}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
         
@@ -526,7 +537,8 @@ const App: React.FC = () => {
         <HistorySidebar
           isOpen={isHistorySidebarOpen}
           onClose={() => setIsHistorySidebarOpen(false)}
-          history={history}
+          geminiHistory={history}
+          wavespeedHistory={wavespeedHistory}
           onSelect={handleHistorySelect}
         />
         

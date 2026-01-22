@@ -171,7 +171,7 @@ export const saveHistoryItemToDb = async (item: HistoryItem): Promise<void> => {
   }
 };
 
-export const getHistoryFromDb = async (): Promise<HistoryItem[]> => {
+export const getHistoryFromDb = async (source?: 'gemini' | 'wavespeed'): Promise<HistoryItem[]> => {
   try {
     const db = await openDB();
     const tx = db.transaction(HISTORY_STORE, 'readonly');
@@ -180,7 +180,20 @@ export const getHistoryFromDb = async (): Promise<HistoryItem[]> => {
 
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
-        const items = request.result as HistoryItem[];
+        let items = request.result as HistoryItem[];
+        
+        // Filter by source if specified
+        if (source) {
+          items = items.filter(item => item.source === source);
+        } else {
+          // If no source specified, return all (for backward compatibility)
+          // Items without source are assumed to be Gemini
+          items = items.map(item => ({
+            ...item,
+            source: item.source || 'gemini'
+          }));
+        }
+        
         // Sort by ID descending (assuming ISO timestamp at start of ID)
         items.sort((a, b) => b.id.localeCompare(a.id));
         resolve(items);

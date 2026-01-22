@@ -14,6 +14,7 @@ export interface HistoryItem {
   referenceImageUrl?: string;
   prompt: string;
   aspectRatio: AspectRatio;
+  source?: 'gemini' | 'wavespeed'; // Track which API was used
 }
 
 export interface User {

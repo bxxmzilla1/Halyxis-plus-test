@@ -1,15 +1,26 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { HistoryItem } from '../types';
 
 interface HistorySidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  history: HistoryItem[];
+  geminiHistory: HistoryItem[];
+  wavespeedHistory: HistoryItem[];
   onSelect: (item: HistoryItem) => void;
 }
 
-export const HistorySidebar: React.FC<HistorySidebarProps> = ({ isOpen, onClose, history, onSelect }) => {
+export const HistorySidebar: React.FC<HistorySidebarProps> = ({ 
+  isOpen, 
+  onClose, 
+  geminiHistory, 
+  wavespeedHistory, 
+  onSelect 
+}) => {
+  const [activeTab, setActiveTab] = useState<'gemini' | 'wavespeed'>('gemini');
+
+  const currentHistory = activeTab === 'gemini' ? geminiHistory : wavespeedHistory;
+
   return (
     <>
       {/* Backdrop */}
@@ -23,7 +34,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({ isOpen, onClose,
         className={`fixed right-0 top-0 h-full w-80 sm:w-96 bg-[#0a0c10] border-l border-white/5 shadow-2xl transform transition-transform duration-500 cubic-bezier(0.16, 1, 0.3, 1) z-50 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
         <div className="flex items-center justify-between p-6 border-b border-white/5 h-20">
-          <h2 className="text-lg font-bold text-white tracking-wide">History</h2>
+          <h2 className="text-lg font-bold text-white tracking-wide">Generation History</h2>
           <button 
             onClick={onClose} 
             className="p-2 text-gray-500 hover:text-white transition-colors rounded-lg hover:bg-white/5"
@@ -36,13 +47,39 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({ isOpen, onClose,
           </button>
         </div>
 
-        <div className="overflow-y-auto h-[calc(100%-5rem)] p-6 space-y-6">
-          {history.length === 0 ? (
+        {/* Tabs */}
+        <div className="border-b border-white/5 px-6 pt-4">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('gemini')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'gemini'
+                  ? 'bg-[#0f1115] text-teal-400 border-t border-l border-r border-white/10'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Gemini ({geminiHistory.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('wavespeed')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                activeTab === 'wavespeed'
+                  ? 'bg-[#0f1115] text-teal-400 border-t border-l border-r border-white/10'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              WaveSpeed ({wavespeedHistory.length})
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto h-[calc(100%-9rem)] p-6 space-y-6">
+          {currentHistory.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-64 text-gray-600 text-sm">
-                <p>No history yet.</p>
+                <p>No {activeTab === 'gemini' ? 'Gemini' : 'WaveSpeed'} history yet.</p>
              </div>
           ) : (
-             history.map((item) => (
+             currentHistory.map((item) => (
                 <button
                    key={item.id} 
                    onClick={() => { onSelect(item); onClose(); }} 
@@ -63,8 +100,15 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({ isOpen, onClose,
                            />
                         </div>
                       )}
-                      <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">
-                        {item.aspectRatio}
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <div className="bg-black/70 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">
+                          {item.aspectRatio}
+                        </div>
+                        {item.source === 'wavespeed' && (
+                          <div className="bg-teal-900/70 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-teal-400 uppercase tracking-wider">
+                            WS
+                          </div>
+                        )}
                       </div>
                    </div>
                    <div className="p-4">
