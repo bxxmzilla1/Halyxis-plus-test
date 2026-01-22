@@ -260,11 +260,32 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     return () => clearTimeout(timeoutId);
   }, [isOpen, activeTab, reloadWavespeedHistory]);
 
-  // Listen for WaveSpeed history updates (debounced)
+  // Listen for WaveSpeed API key saves - refresh only once immediately
+  const apiKeyRefreshRef = useRef(false);
+  useEffect(() => {
+    const handleApiKeySaved = () => {
+      // Refresh immediately, only once
+      if (isOpen && !apiKeyRefreshRef.current) {
+        apiKeyRefreshRef.current = true;
+        reloadWavespeedHistory(true); // Force refresh immediately
+        // Reset flag after a short delay to allow future refreshes
+        setTimeout(() => {
+          apiKeyRefreshRef.current = false;
+        }, 1000);
+      }
+    };
+    
+    window.addEventListener('wavespeedApiKeySaved', handleApiKeySaved);
+    return () => {
+      window.removeEventListener('wavespeedApiKeySaved', handleApiKeySaved);
+    };
+  }, [isOpen, reloadWavespeedHistory]);
+
+  // Listen for WaveSpeed history updates from new generations (debounced)
   useEffect(() => {
     const handleWavespeedHistoryUpdate = () => {
-      // Reload if sidebar is open (refresh when tab is active, or prepare for when user switches to it)
-      if (isOpen) {
+      // Only reload if WaveSpeed tab is active
+      if (activeTab === 'wavespeed' && isOpen) {
         setTimeout(() => {
           reloadWavespeedHistory(true); // Force refresh
         }, 300);
@@ -275,7 +296,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     return () => {
       window.removeEventListener('wavespeedHistoryUpdated', handleWavespeedHistoryUpdate);
     };
-  }, [isOpen, reloadWavespeedHistory]);
+  }, [activeTab, isOpen, reloadWavespeedHistory]);
 
   // Listen for Gemini history updates
   useEffect(() => {

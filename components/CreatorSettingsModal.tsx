@@ -89,8 +89,8 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
         storeWaveSpeedApiKey('');
         setShowWaveSpeedSuccess(true);
         setTimeout(() => setShowWaveSpeedSuccess(false), 3000);
-        // Dispatch event to refresh WaveSpeed history
-        window.dispatchEvent(new CustomEvent('wavespeedHistoryUpdated'));
+        // Dispatch event to refresh WaveSpeed history once after API key is saved
+        window.dispatchEvent(new CustomEvent('wavespeedApiKeySaved'));
         return;
     }
 
@@ -101,8 +101,8 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
             storeWaveSpeedApiKey(waveSpeedApiKey);
             setShowWaveSpeedSuccess(true);
             setTimeout(() => setShowWaveSpeedSuccess(false), 3000);
-            // Dispatch event to refresh WaveSpeed history
-            window.dispatchEvent(new CustomEvent('wavespeedHistoryUpdated'));
+            // Dispatch event to refresh WaveSpeed history once after API key is saved
+            window.dispatchEvent(new CustomEvent('wavespeedApiKeySaved'));
         } else {
             setWaveSpeedValidationError('Invalid API Key. Please check your WaveSpeed API key.');
         }
