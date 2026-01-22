@@ -35,8 +35,11 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
   // Function to reload history
   const reloadHistory = useCallback(async () => {
+    console.log('Reloading history...');
     const geminiHistory = await getHistoryFromDb('gemini');
     const wavespeedHistory = await getHistoryFromDb('wavespeed');
+    console.log('Loaded Gemini history:', geminiHistory.length, 'items');
+    console.log('Loaded WaveSpeed history:', wavespeedHistory.length, 'items');
     setLocalGeminiHistory(geminiHistory);
     setLocalWavespeedHistory(wavespeedHistory);
     if (onHistoryUpdate) {

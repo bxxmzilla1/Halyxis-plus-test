@@ -184,7 +184,15 @@ export const getHistoryFromDb = async (source?: 'gemini' | 'wavespeed'): Promise
         
         // Filter by source if specified
         if (source) {
-          items = items.filter(item => item.source === source);
+          items = items.filter(item => {
+            const itemSource = item.source || 'gemini'; // Default to gemini for backward compatibility
+            const matches = itemSource === source;
+            if (!matches && itemSource === 'wavespeed' && source === 'wavespeed') {
+              console.log('Filtered out item (wrong source):', item.id, 'has source:', item.source);
+            }
+            return matches;
+          });
+          console.log(`Filtered ${items.length} items for source: ${source} from ${request.result.length} total items`);
         } else {
           // If no source specified, return all (for backward compatibility)
           // Items without source are assumed to be Gemini
