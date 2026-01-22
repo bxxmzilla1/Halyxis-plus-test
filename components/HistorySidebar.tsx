@@ -2,6 +2,29 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { HistoryItem } from '../types';
 import { getHistoryFromDb } from '../utils/storageUtils';
+import { getWaveSpeedApiKey } from '../services/apiKeyService';
+
+interface WaveSpeedPrediction {
+  id: string;
+  model: string;
+  status: 'created' | 'processing' | 'completed' | 'failed';
+  outputs?: string[];
+  created_at: string;
+  input?: {
+    prompt?: string;
+    images?: string[];
+    seed?: number;
+    enable_prompt_expansion?: boolean;
+  };
+}
+
+interface WaveSpeedPredictionsResponse {
+  code: number;
+  data: {
+    items: WaveSpeedPrediction[];
+    total?: number;
+  };
+}
 
 interface HistorySidebarProps {
   isOpen: boolean;
@@ -23,6 +46,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [activeTab, setActiveTab] = useState<'gemini' | 'wavespeed'>('gemini');
   const [localGeminiHistory, setLocalGeminiHistory] = useState<HistoryItem[]>(geminiHistory);
   const [localWavespeedHistory, setLocalWavespeedHistory] = useState<HistoryItem[]>(wavespeedHistory);
+  const [wavespeedLoading, setWavespeedLoading] = useState(false);
+  const [wavespeedError, setWavespeedError] = useState<string | null>(null);
 
   // Sync with props when they change
   useEffect(() => {
@@ -33,11 +58,86 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setLocalWavespeedHistory(wavespeedHistory);
   }, [wavespeedHistory]);
 
+  // Function to fetch WaveSpeed predictions from API
+  const fetchWaveSpeedPredictions = useCallback(async (): Promise<HistoryItem[]> => {
+    const apiKey = getWaveSpeedApiKey();
+    if (!apiKey) {
+      setWavespeedError('WaveSpeed API key not set');
+      return [];
+    }
+
+    setWavespeedLoading(true);
+    setWavespeedError(null);
+
+    try {
+      // Fetch predictions from WaveSpeed API
+      const response = await fetch('https://api.wavespeed.ai/api/v3/predictions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          page: 1, 
+          page_size: 100 
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.message || `Failed to fetch predictions: ${response.status}`);
+      }
+
+      const result: WaveSpeedPredictionsResponse = await response.json();
+      
+      if (result.code !== 200 || !result.data?.items) {
+        throw new Error('Invalid response from WaveSpeed API');
+      }
+
+      // Filter for image-edit model and convert to HistoryItem format
+      const imageEditPredictions = result.data.items
+        .filter((pred: WaveSpeedPrediction) => 
+          pred.model && pred.model.includes('wan-2.6/image-edit')
+        )
+        .filter((pred: WaveSpeedPrediction) => 
+          pred.status === 'completed' && pred.outputs && pred.outputs.length > 0
+        )
+        .map((pred: WaveSpeedPrediction): HistoryItem & { created_at?: string } => ({
+          id: pred.id,
+          imageUrl: pred.outputs![0], // Use first output
+          prompt: pred.input?.prompt || 'No prompt',
+          aspectRatio: '16:9' as const, // Default, could be extracted from input if available
+          source: 'wavespeed',
+          created_at: pred.created_at, // Store created_at for date display
+        }))
+        .sort((a, b) => {
+          // Sort by created_at descending (newest first)
+          const dateA = (a as any).created_at || '';
+          const dateB = (b as any).created_at || '';
+          return dateB.localeCompare(dateA);
+        });
+
+      console.log(`[HistorySidebar] Fetched ${imageEditPredictions.length} WaveSpeed predictions from API`);
+      return imageEditPredictions;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch WaveSpeed predictions';
+      console.error('[HistorySidebar] Error fetching WaveSpeed predictions:', error);
+      setWavespeedError(errorMessage);
+      return [];
+    } finally {
+      setWavespeedLoading(false);
+    }
+  }, []);
+
   // Function to reload history
   const reloadHistory = useCallback(async () => {
     console.log('Reloading history...');
     const geminiHistory = await getHistoryFromDb('gemini');
-    const wavespeedHistory = await getHistoryFromDb('wavespeed');
+    
+    // For WaveSpeed, fetch from API instead of local storage
+    const wavespeedHistory = await fetchWaveSpeedPredictions();
+    
     console.log('Loaded Gemini history:', geminiHistory.length, 'items');
     console.log('Loaded WaveSpeed history:', wavespeedHistory.length, 'items');
     setLocalGeminiHistory(geminiHistory);
@@ -45,7 +145,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     if (onHistoryUpdate) {
       onHistoryUpdate(geminiHistory, wavespeedHistory);
     }
-  }, [onHistoryUpdate]);
+  }, [onHistoryUpdate, fetchWaveSpeedPredictions]);
 
   // Listen for WaveSpeed history updates
   useEffect(() => {
@@ -78,6 +178,18 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     }
   }, [isOpen, reloadHistory]);
 
+  // Fetch WaveSpeed predictions when switching to WaveSpeed tab
+  useEffect(() => {
+    if (isOpen && activeTab === 'wavespeed') {
+      fetchWaveSpeedPredictions().then(predictions => {
+        setLocalWavespeedHistory(predictions);
+        if (onHistoryUpdate) {
+          onHistoryUpdate(localGeminiHistory, predictions);
+        }
+      });
+    }
+  }, [isOpen, activeTab, fetchWaveSpeedPredictions, localGeminiHistory, onHistoryUpdate]);
+
   const currentHistory = activeTab === 'gemini' ? localGeminiHistory : localWavespeedHistory;
 
   return (
@@ -94,16 +206,44 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       >
         <div className="flex items-center justify-between p-6 border-b border-white/5 h-20">
           <h2 className="text-lg font-bold text-white tracking-wide">Generation History</h2>
-          <button 
-            onClick={onClose} 
-            className="p-2 text-gray-500 hover:text-white transition-colors rounded-lg hover:bg-white/5"
-            aria-label="Close sidebar"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            {activeTab === 'wavespeed' && (
+              <button 
+                onClick={() => {
+                  fetchWaveSpeedPredictions().then(predictions => {
+                    setLocalWavespeedHistory(predictions);
+                    if (onHistoryUpdate) {
+                      onHistoryUpdate(localGeminiHistory, predictions);
+                    }
+                  });
+                }}
+                disabled={wavespeedLoading}
+                className="p-2 text-gray-500 hover:text-teal-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh WaveSpeed History"
+                aria-label="Refresh"
+              >
+                <svg 
+                  className={`w-5 h-5 ${wavespeedLoading ? 'animate-spin' : ''}`} 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            )}
+            <button 
+              onClick={onClose} 
+              className="p-2 text-gray-500 hover:text-white transition-colors rounded-lg hover:bg-white/5"
+              aria-label="Close sidebar"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -133,11 +273,28 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         </div>
 
         <div className="overflow-y-auto h-[calc(100%-9rem)] p-6 space-y-6">
-          {currentHistory.length === 0 ? (
+          {activeTab === 'wavespeed' && wavespeedLoading && (
+            <div className="flex flex-col items-center justify-center h-64">
+              <svg className="animate-spin h-8 w-8 text-teal-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <p className="text-gray-400 text-sm mt-4">Loading WaveSpeed predictions...</p>
+            </div>
+          )}
+          {activeTab === 'wavespeed' && wavespeedError && (
+            <div className="bg-red-900/10 border border-red-500/20 text-red-300 px-4 py-3 rounded-xl">
+              <p className="text-sm">{wavespeedError}</p>
+            </div>
+          )}
+          {!wavespeedLoading && currentHistory.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-64 text-gray-600 text-sm">
                 <p>No {activeTab === 'gemini' ? 'Gemini' : 'WaveSpeed'} history yet.</p>
+                {activeTab === 'wavespeed' && (
+                  <p className="text-xs text-gray-500 mt-2">Predictions are stored for 7 days on WaveSpeed servers.</p>
+                )}
              </div>
-          ) : (
+          ) : !wavespeedLoading && (
              currentHistory.map((item) => (
                 <button
                    key={item.id} 
@@ -175,7 +332,22 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                         {item.prompt || 'No text prompt provided'}
                       </p>
                       <p className="text-[10px] text-gray-600 uppercase tracking-widest font-semibold">
-                        {item.id.includes('T') ? new Date(item.id.split('T')[0]).toLocaleDateString() : 'Recent'}
+                        {(() => {
+                          // Try to get date from created_at if available (WaveSpeed API)
+                          const created_at = (item as any).created_at;
+                          if (created_at) {
+                            try {
+                              return new Date(created_at).toLocaleDateString();
+                            } catch {
+                              // Fall through to other methods
+                            }
+                          }
+                          // Try to parse from ID (ISO timestamp format)
+                          if (item.id.includes('T') || item.id.match(/^\d{4}-\d{2}-\d{2}/)) {
+                            return new Date(item.id.split('T')[0]).toLocaleDateString();
+                          }
+                          return 'Recent';
+                        })()}
                       </p>
                    </div>
                 </button>
