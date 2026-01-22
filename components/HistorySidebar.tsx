@@ -52,7 +52,13 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   // Refs to prevent duplicate fetches
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef<number>(0);
+  const currentWavespeedHistoryRef = useRef<HistoryItem[]>(wavespeedHistory);
   const DEBOUNCE_DELAY = 500; // 500ms debounce
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    currentWavespeedHistoryRef.current = localWavespeedHistory;
+  }, [localWavespeedHistory]);
 
   // Sync with props when they change (only for Gemini, WaveSpeed comes from API)
   useEffect(() => {
@@ -63,10 +69,16 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const fetchWaveSpeedPredictions = useCallback(async (force: boolean = false): Promise<HistoryItem[]> => {
     // Prevent duplicate fetches
     const now = Date.now();
-    if (!force && (isFetchingRef.current || (now - lastFetchTimeRef.current < DEBOUNCE_DELAY))) {
-      console.log('[HistorySidebar] Skipping duplicate fetch');
-      // Return empty array to avoid dependency issues - the state will be updated by the caller
-      return [];
+    if (!force && isFetchingRef.current) {
+      console.log('[HistorySidebar] Already fetching, skipping duplicate fetch');
+      // Return current history from ref to preserve it
+      return currentWavespeedHistoryRef.current;
+    }
+    
+    if (!force && (now - lastFetchTimeRef.current < DEBOUNCE_DELAY)) {
+      console.log('[HistorySidebar] Too soon since last fetch, skipping');
+      // Return current history from ref to preserve it
+      return currentWavespeedHistoryRef.current;
     }
 
     const apiKey = getWaveSpeedApiKey();
