@@ -1,6 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { HistoryItem } from '../types';
+import { getHistoryFromDb } from '../utils/storageUtils';
 
 interface HistorySidebarProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface HistorySidebarProps {
   geminiHistory: HistoryItem[];
   wavespeedHistory: HistoryItem[];
   onSelect: (item: HistoryItem) => void;
+  onHistoryUpdate?: (gemini: HistoryItem[], wavespeed: HistoryItem[]) => void;
 }
 
 export const HistorySidebar: React.FC<HistorySidebarProps> = ({ 
@@ -15,11 +17,65 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   onClose, 
   geminiHistory, 
   wavespeedHistory, 
-  onSelect 
+  onSelect,
+  onHistoryUpdate
 }) => {
   const [activeTab, setActiveTab] = useState<'gemini' | 'wavespeed'>('gemini');
+  const [localGeminiHistory, setLocalGeminiHistory] = useState<HistoryItem[]>(geminiHistory);
+  const [localWavespeedHistory, setLocalWavespeedHistory] = useState<HistoryItem[]>(wavespeedHistory);
 
-  const currentHistory = activeTab === 'gemini' ? geminiHistory : wavespeedHistory;
+  // Sync with props when they change
+  useEffect(() => {
+    setLocalGeminiHistory(geminiHistory);
+  }, [geminiHistory]);
+
+  useEffect(() => {
+    setLocalWavespeedHistory(wavespeedHistory);
+  }, [wavespeedHistory]);
+
+  // Function to reload history
+  const reloadHistory = useCallback(async () => {
+    const geminiHistory = await getHistoryFromDb('gemini');
+    const wavespeedHistory = await getHistoryFromDb('wavespeed');
+    setLocalGeminiHistory(geminiHistory);
+    setLocalWavespeedHistory(wavespeedHistory);
+    if (onHistoryUpdate) {
+      onHistoryUpdate(geminiHistory, wavespeedHistory);
+    }
+  }, [onHistoryUpdate]);
+
+  // Listen for WaveSpeed history updates
+  useEffect(() => {
+    const handleWavespeedHistoryUpdate = () => {
+      reloadHistory();
+    };
+    
+    window.addEventListener('wavespeedHistoryUpdated', handleWavespeedHistoryUpdate);
+    return () => {
+      window.removeEventListener('wavespeedHistoryUpdated', handleWavespeedHistoryUpdate);
+    };
+  }, [reloadHistory]);
+
+  // Listen for Gemini history updates (if needed in the future)
+  useEffect(() => {
+    const handleGeminiHistoryUpdate = () => {
+      reloadHistory();
+    };
+    
+    window.addEventListener('geminiHistoryUpdated', handleGeminiHistoryUpdate);
+    return () => {
+      window.removeEventListener('geminiHistoryUpdated', handleGeminiHistoryUpdate);
+    };
+  }, [reloadHistory]);
+
+  // Reload history when sidebar opens
+  useEffect(() => {
+    if (isOpen) {
+      reloadHistory();
+    }
+  }, [isOpen, reloadHistory]);
+
+  const currentHistory = activeTab === 'gemini' ? localGeminiHistory : localWavespeedHistory;
 
   return (
     <>
@@ -58,7 +114,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   : 'text-gray-500 hover:text-gray-300'
               }`}
             >
-              Gemini ({geminiHistory.length})
+              Gemini ({localGeminiHistory.length})
             </button>
             <button
               onClick={() => setActiveTab('wavespeed')}
@@ -68,7 +124,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                   : 'text-gray-500 hover:text-gray-300'
               }`}
             >
-              WaveSpeed ({wavespeedHistory.length})
+              WaveSpeed ({localWavespeedHistory.length})
             </button>
           </div>
         </div>

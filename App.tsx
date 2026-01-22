@@ -315,7 +315,12 @@ const App: React.FC = () => {
       const updatedHistory = [newHistoryItem, ...history];
       setHistory(updatedHistory);
       // Fire and forget save to DB
-      saveHistoryItemToDb(newHistoryItem).catch(err => console.error("Failed to save history:", err));
+      saveHistoryItemToDb(newHistoryItem)
+        .then(() => {
+          // Dispatch event to notify HistorySidebar
+          window.dispatchEvent(new CustomEvent('geminiHistoryUpdated'));
+        })
+        .catch(err => console.error("Failed to save history:", err));
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -540,6 +545,10 @@ const App: React.FC = () => {
           geminiHistory={history}
           wavespeedHistory={wavespeedHistory}
           onSelect={handleHistorySelect}
+          onHistoryUpdate={(gemini, wavespeed) => {
+            setHistory(gemini);
+            setWavespeedHistory(wavespeed);
+          }}
         />
         
         <CreatorSettingsModal 
