@@ -53,6 +53,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef<number>(0);
   const currentWavespeedHistoryRef = useRef<HistoryItem[]>(wavespeedHistory);
+  const hasInitialFetchedRef = useRef(false); // Track if we've done initial fetch after page refresh
   const DEBOUNCE_DELAY = 500; // 500ms debounce
 
   // Keep ref in sync with state
@@ -65,14 +66,29 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setLocalGeminiHistory(geminiHistory);
   }, [geminiHistory]);
 
-  // Initialize WaveSpeed history from props only (no auto-fetch)
-  // WaveSpeed history will only update via manual refresh button
+  // Initialize WaveSpeed history from props
   useEffect(() => {
-    // Only set initial state if we don't have any local history yet
-    if (localWavespeedHistory.length === 0 && wavespeedHistory.length > 0) {
+    // Set initial state from props if available
+    if (wavespeedHistory.length > 0) {
       setLocalWavespeedHistory(wavespeedHistory);
     }
   }, []); // Empty deps - only run on mount
+
+  // One-time fetch when WaveSpeed tab is first opened (after page refresh)
+  // This ensures history loads on page refresh, but doesn't auto-refresh continuously
+  useEffect(() => {
+    // Only fetch once when sidebar opens and WaveSpeed tab is active
+    // and we don't have any history yet
+    if (isOpen && activeTab === 'wavespeed' && !hasInitialFetchedRef.current) {
+      const apiKey = getWaveSpeedApiKey();
+      // Only fetch if API key is available and we have no history
+      if (apiKey && localWavespeedHistory.length === 0) {
+        hasInitialFetchedRef.current = true;
+        // Fetch once on initial load
+        reloadWavespeedHistory(true);
+      }
+    }
+  }, [isOpen, activeTab, localWavespeedHistory.length, reloadWavespeedHistory]);
 
   // Function to fetch WaveSpeed predictions from API
   // IMPORTANT: This function will ONLY fetch when force=true (manual refresh button)
