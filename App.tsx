@@ -53,17 +53,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Handle case where view is 'app' but user is not set (shouldn't happen, but handle gracefully)
-  useEffect(() => {
-    if (view === 'app' && !user) {
-      // If we're in app view but user is null, redirect to auth after a short delay
-      const timer = setTimeout(() => {
-        setView('auth');
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [view, user]);
-
   // Check for API key readiness when the user enters the app view
   useEffect(() => {
     if (view === 'app' && user) {
@@ -366,16 +355,7 @@ const App: React.FC = () => {
     return <AuthPage onLogin={handleLogin} />;
   }
   
-  if (view === 'app') {
-    // If user is not set yet, show loading (useEffect will redirect to auth)
-    if (!user) {
-      return (
-        <div className="min-h-screen bg-[#020408] flex items-center justify-center p-6">
-          <div className="text-gray-400">Loading...</div>
-        </div>
-      );
-    }
-
+  if (view === 'app' && user) {
     if (!isKeyReady) {
       // This view gates the app until a valid key is selected in AI Studio.
       return (
