@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { HistoryItem } from '../types';
 import { getHistoryFromDb } from '../utils/storageUtils';
 import { getWaveSpeedApiKey } from '../services/apiKeyService';
@@ -48,24 +48,35 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [localWavespeedHistory, setLocalWavespeedHistory] = useState<HistoryItem[]>(wavespeedHistory);
   const [wavespeedLoading, setWavespeedLoading] = useState(false);
   const [wavespeedError, setWavespeedError] = useState<string | null>(null);
+  
+  // Refs to prevent duplicate fetches
+  const isFetchingRef = useRef(false);
+  const lastFetchTimeRef = useRef<number>(0);
+  const DEBOUNCE_DELAY = 500; // 500ms debounce
 
-  // Sync with props when they change
+  // Sync with props when they change (only for Gemini, WaveSpeed comes from API)
   useEffect(() => {
     setLocalGeminiHistory(geminiHistory);
   }, [geminiHistory]);
 
-  useEffect(() => {
-    setLocalWavespeedHistory(wavespeedHistory);
-  }, [wavespeedHistory]);
-
   // Function to fetch WaveSpeed predictions from API
-  const fetchWaveSpeedPredictions = useCallback(async (): Promise<HistoryItem[]> => {
+  const fetchWaveSpeedPredictions = useCallback(async (force: boolean = false): Promise<HistoryItem[]> => {
+    // Prevent duplicate fetches
+    const now = Date.now();
+    if (!force && (isFetchingRef.current || (now - lastFetchTimeRef.current < DEBOUNCE_DELAY))) {
+      console.log('[HistorySidebar] Skipping duplicate fetch');
+      // Return empty array to avoid dependency issues - the state will be updated by the caller
+      return [];
+    }
+
     const apiKey = getWaveSpeedApiKey();
     if (!apiKey) {
       setWavespeedError('WaveSpeed API key not set');
       return [];
     }
 
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = now;
     setWavespeedLoading(true);
     setWavespeedError(null);
 
@@ -127,68 +138,85 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       return [];
     } finally {
       setWavespeedLoading(false);
+      isFetchingRef.current = false;
     }
   }, []);
 
-  // Function to reload history
-  const reloadHistory = useCallback(async () => {
-    console.log('Reloading history...');
+  // Function to reload Gemini history from local storage
+  const reloadGeminiHistory = useCallback(async () => {
     const geminiHistory = await getHistoryFromDb('gemini');
-    
-    // For WaveSpeed, fetch from API instead of local storage
-    const wavespeedHistory = await fetchWaveSpeedPredictions();
-    
-    console.log('Loaded Gemini history:', geminiHistory.length, 'items');
-    console.log('Loaded WaveSpeed history:', wavespeedHistory.length, 'items');
     setLocalGeminiHistory(geminiHistory);
+    if (onHistoryUpdate) {
+      setLocalWavespeedHistory(prev => {
+        onHistoryUpdate(geminiHistory, prev);
+        return prev;
+      });
+    }
+  }, [onHistoryUpdate]);
+
+  // Function to reload WaveSpeed history from API
+  const reloadWavespeedHistory = useCallback(async (force: boolean = false) => {
+    const wavespeedHistory = await fetchWaveSpeedPredictions(force);
     setLocalWavespeedHistory(wavespeedHistory);
     if (onHistoryUpdate) {
-      onHistoryUpdate(geminiHistory, wavespeedHistory);
+      setLocalGeminiHistory(prev => {
+        onHistoryUpdate(prev, wavespeedHistory);
+        return prev;
+      });
     }
-  }, [onHistoryUpdate, fetchWaveSpeedPredictions]);
+  }, [fetchWaveSpeedPredictions, onHistoryUpdate]);
 
-  // Listen for WaveSpeed history updates
+  // Load Gemini history when sidebar opens
+  useEffect(() => {
+    if (isOpen) {
+      reloadGeminiHistory();
+    }
+  }, [isOpen, reloadGeminiHistory]);
+
+  // Fetch WaveSpeed predictions when switching to WaveSpeed tab (debounced)
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'wavespeed') {
+      return;
+    }
+
+    // Debounce the fetch
+    const timeoutId = setTimeout(() => {
+      reloadWavespeedHistory();
+    }, 100);
+
+    return () => clearTimeout(timeoutId);
+  }, [isOpen, activeTab, reloadWavespeedHistory]);
+
+  // Listen for WaveSpeed history updates (debounced)
   useEffect(() => {
     const handleWavespeedHistoryUpdate = () => {
-      reloadHistory();
+      // Only reload if WaveSpeed tab is active
+      if (activeTab === 'wavespeed' && isOpen) {
+        setTimeout(() => {
+          reloadWavespeedHistory(true); // Force refresh
+        }, 300);
+      }
     };
     
     window.addEventListener('wavespeedHistoryUpdated', handleWavespeedHistoryUpdate);
     return () => {
       window.removeEventListener('wavespeedHistoryUpdated', handleWavespeedHistoryUpdate);
     };
-  }, [reloadHistory]);
+  }, [activeTab, isOpen, reloadWavespeedHistory]);
 
-  // Listen for Gemini history updates (if needed in the future)
+  // Listen for Gemini history updates
   useEffect(() => {
     const handleGeminiHistoryUpdate = () => {
-      reloadHistory();
+      if (activeTab === 'gemini' && isOpen) {
+        reloadGeminiHistory();
+      }
     };
     
     window.addEventListener('geminiHistoryUpdated', handleGeminiHistoryUpdate);
     return () => {
       window.removeEventListener('geminiHistoryUpdated', handleGeminiHistoryUpdate);
     };
-  }, [reloadHistory]);
-
-  // Reload history when sidebar opens
-  useEffect(() => {
-    if (isOpen) {
-      reloadHistory();
-    }
-  }, [isOpen, reloadHistory]);
-
-  // Fetch WaveSpeed predictions when switching to WaveSpeed tab
-  useEffect(() => {
-    if (isOpen && activeTab === 'wavespeed') {
-      fetchWaveSpeedPredictions().then(predictions => {
-        setLocalWavespeedHistory(predictions);
-        if (onHistoryUpdate) {
-          onHistoryUpdate(localGeminiHistory, predictions);
-        }
-      });
-    }
-  }, [isOpen, activeTab, fetchWaveSpeedPredictions, localGeminiHistory, onHistoryUpdate]);
+  }, [activeTab, isOpen, reloadGeminiHistory]);
 
   const currentHistory = activeTab === 'gemini' ? localGeminiHistory : localWavespeedHistory;
 
@@ -210,12 +238,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             {activeTab === 'wavespeed' && (
               <button 
                 onClick={() => {
-                  fetchWaveSpeedPredictions().then(predictions => {
-                    setLocalWavespeedHistory(predictions);
-                    if (onHistoryUpdate) {
-                      onHistoryUpdate(localGeminiHistory, predictions);
-                    }
-                  });
+                  reloadWavespeedHistory(true); // Force refresh
                 }}
                 disabled={wavespeedLoading}
                 className="p-2 text-gray-500 hover:text-teal-400 transition-colors rounded-lg hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
