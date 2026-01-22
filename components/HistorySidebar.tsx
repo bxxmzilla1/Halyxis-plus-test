@@ -84,7 +84,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     const apiKey = getWaveSpeedApiKey();
     if (!apiKey) {
       setWavespeedError('WaveSpeed API key not set');
-      return [];
+      // Preserve existing history instead of clearing it
+      return currentWavespeedHistoryRef.current;
     }
 
     isFetchingRef.current = true;
@@ -208,7 +209,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch WaveSpeed predictions';
       console.error('[HistorySidebar] Error fetching WaveSpeed predictions:', error);
       setWavespeedError(errorMessage);
-      return [];
+      // Return current history to preserve it instead of clearing
+      return currentWavespeedHistoryRef.current;
     } finally {
       setWavespeedLoading(false);
       isFetchingRef.current = false;
@@ -230,6 +232,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   // Function to reload WaveSpeed history from API
   const reloadWavespeedHistory = useCallback(async (force: boolean = false) => {
     const wavespeedHistory = await fetchWaveSpeedPredictions(force);
+    // Always update the state with the result (which preserves history on error)
     setLocalWavespeedHistory(wavespeedHistory);
     if (onHistoryUpdate) {
       setLocalGeminiHistory(prev => {
