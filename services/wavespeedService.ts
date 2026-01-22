@@ -12,21 +12,32 @@ interface WaveSpeedRequest {
 }
 
 interface WaveSpeedResponse {
+  code?: number;
+  data?: {
+    id?: string;
+    status: 'pending' | 'processing' | 'completed' | 'failed' | 'created';
+    outputs?: string[];
+    error?: string | null;
+    created_at?: string;
+    model?: string;
+    urls?: {
+      get?: string;
+    };
+    input?: {
+      images?: string[];
+      prompt?: string;
+      seed?: number;
+      enable_prompt_expansion?: boolean;
+    };
+    timings?: {
+      inference?: number;
+    };
+  };
+  // Also support direct structure (for backward compatibility)
   id?: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status?: 'pending' | 'processing' | 'completed' | 'failed' | 'created';
   outputs?: string[];
   error?: string | null;
-  created_at?: string;
-  model?: string;
-  urls?: {
-    get?: string;
-  };
-  input?: {
-    images?: string[];
-    prompt?: string;
-    seed?: number;
-    enable_prompt_expansion?: boolean;
-  };
 }
 
 interface WaveSpeedResultResponse {
@@ -106,18 +117,24 @@ const pollForResult = async (
         throw new Error('Invalid JSON response from API');
       }
 
+      // Handle wrapped response structure (code + data)
+      const responseData = data.data || data;
+      const status = responseData.status || data.status || 'pending';
+      const outputs = responseData.outputs || data.outputs;
+      const error = responseData.error || data.error;
+
       if (onProgress) {
-        onProgress(data.status);
+        onProgress(status);
       }
 
-      if (data.status === 'completed') {
+      if (status === 'completed') {
         // Check if outputs are already in the response
-        if (data.outputs && data.outputs.length > 0) {
-          return data.outputs;
+        if (outputs && outputs.length > 0) {
+          return outputs;
         }
 
         // Otherwise, try to get the result from the result endpoint
-        const resultUrl = data.urls?.get || `${WAVESPEED_API_BASE}/predictions/${requestId}/result`;
+        const resultUrl = responseData.urls?.get || data.urls?.get || `${WAVESPEED_API_BASE}/predictions/${requestId}/result`;
         
         const resultResponse = await fetch(
           resultUrl,
@@ -135,7 +152,7 @@ const pollForResult = async (
         }
 
         const resultText = await resultResponse.text();
-        let resultData: WaveSpeedResultResponse;
+        let resultData: any;
         
         try {
           resultData = JSON.parse(resultText);
@@ -143,16 +160,19 @@ const pollForResult = async (
           console.error('Failed to parse result response:', resultText);
           throw new Error('Invalid JSON response from result endpoint');
         }
+
+        // Handle wrapped response structure
+        const resultOutputs = resultData.data?.outputs || resultData.outputs;
         
-        if (resultData.outputs && resultData.outputs.length > 0) {
-          return resultData.outputs;
+        if (resultOutputs && resultOutputs.length > 0) {
+          return resultOutputs;
         } else {
           throw new Error('No output URLs returned from API');
         }
       }
 
-      if (data.status === 'failed') {
-        const errorMsg = data.error && data.error.trim() ? data.error : 'Image generation failed';
+      if (status === 'failed') {
+        const errorMsg = error && error.trim() ? error : 'Image generation failed';
         throw new Error(errorMsg);
       }
 
@@ -260,8 +280,10 @@ export const editImageWithWaveSpeed = async (
     // Log the response for debugging
     console.log('WaveSpeed API response:', data);
 
-    // Check for id in various possible locations
-    const requestId = data.id || (data as any).prediction_id || (data as any).request_id;
+    // Handle wrapped response structure (code + data)
+    const responseData = data.data || data;
+    const requestId = responseData.id || data.id || (data as any).prediction_id || (data as any).request_id;
+    const status = responseData.status || data.status || 'pending';
     
     if (!requestId) {
       console.error('API response missing ID:', data);
@@ -270,7 +292,7 @@ export const editImageWithWaveSpeed = async (
 
     // Poll for the result
     if (onProgress) {
-      onProgress(data.status || 'pending');
+      onProgress(status);
     }
 
     const outputs = await pollForResult(requestId, API_KEY, onProgress);
@@ -352,8 +374,10 @@ export const editImageWithWaveSpeedMultiple = async (
     // Log the response for debugging
     console.log('WaveSpeed API response:', data);
 
-    // Check for id in various possible locations
-    const requestId = data.id || (data as any).prediction_id || (data as any).request_id;
+    // Handle wrapped response structure (code + data)
+    const responseData = data.data || data;
+    const requestId = responseData.id || data.id || (data as any).prediction_id || (data as any).request_id;
+    const status = responseData.status || data.status || 'pending';
     
     if (!requestId) {
       console.error('API response missing ID:', data);
@@ -362,7 +386,7 @@ export const editImageWithWaveSpeedMultiple = async (
 
     // Poll for the result
     if (onProgress) {
-      onProgress(data.status || 'pending');
+      onProgress(status);
     }
 
     const outputs = await pollForResult(requestId, API_KEY, onProgress);
