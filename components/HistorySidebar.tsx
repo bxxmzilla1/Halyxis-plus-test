@@ -263,8 +263,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   // Listen for WaveSpeed history updates (debounced)
   useEffect(() => {
     const handleWavespeedHistoryUpdate = () => {
-      // Only reload if WaveSpeed tab is active
-      if (activeTab === 'wavespeed' && isOpen) {
+      // Reload if sidebar is open (refresh when tab is active, or prepare for when user switches to it)
+      if (isOpen) {
         setTimeout(() => {
           reloadWavespeedHistory(true); // Force refresh
         }, 300);
@@ -275,7 +275,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     return () => {
       window.removeEventListener('wavespeedHistoryUpdated', handleWavespeedHistoryUpdate);
     };
-  }, [activeTab, isOpen, reloadWavespeedHistory]);
+  }, [isOpen, reloadWavespeedHistory]);
 
   // Listen for Gemini history updates
   useEffect(() => {
