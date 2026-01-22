@@ -65,19 +65,34 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
     setLocalGeminiHistory(geminiHistory);
   }, [geminiHistory]);
 
+  // Initialize WaveSpeed history from props only (no auto-fetch)
+  // WaveSpeed history will only update via manual refresh button
+  useEffect(() => {
+    // Only set initial state if we don't have any local history yet
+    if (localWavespeedHistory.length === 0 && wavespeedHistory.length > 0) {
+      setLocalWavespeedHistory(wavespeedHistory);
+    }
+  }, []); // Empty deps - only run on mount
+
   // Function to fetch WaveSpeed predictions from API
+  // IMPORTANT: This function will ONLY fetch when force=true (manual refresh button)
+  // Auto-refresh is completely disabled - no automatic fetching allowed
   const fetchWaveSpeedPredictions = useCallback(async (force: boolean = false): Promise<HistoryItem[]> => {
-    // Prevent duplicate fetches
-    const now = Date.now();
-    if (!force && isFetchingRef.current) {
+    // STRICT: Only allow fetching if explicitly forced (manual refresh)
+    if (!force) {
+      console.log('[HistorySidebar] Auto-fetch disabled - returning current history. Use manual refresh button.');
+      return currentWavespeedHistoryRef.current;
+    }
+
+    // Prevent duplicate fetches even when forced
+    if (isFetchingRef.current) {
       console.log('[HistorySidebar] Already fetching, skipping duplicate fetch');
-      // Return current history from ref to preserve it
       return currentWavespeedHistoryRef.current;
     }
     
-    if (!force && (now - lastFetchTimeRef.current < DEBOUNCE_DELAY)) {
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < DEBOUNCE_DELAY) {
       console.log('[HistorySidebar] Too soon since last fetch, skipping');
-      // Return current history from ref to preserve it
       return currentWavespeedHistoryRef.current;
     }
 
