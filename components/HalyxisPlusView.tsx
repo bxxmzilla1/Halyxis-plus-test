@@ -18,8 +18,6 @@ export const HalyxisPlusView: React.FC = () => {
   const [loadingStatus, setLoadingStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
-  const [enablePromptExpansion, setEnablePromptExpansion] = useState<boolean>(false);
-  const [seed, setSeed] = useState<number>(-1);
 
   const handleImageUpload = useCallback(async (file: File) => {
     setError(null);
@@ -152,8 +150,8 @@ export const HalyxisPlusView: React.FC = () => {
         imageUrl = await editImageWithWaveSpeedMultiple(
           allImages,
           prompt,
-          enablePromptExpansion,
-          seed,
+          false, // enablePromptExpansion
+          -1, // seed (always -1 for random)
           (status) => {
             setLoadingStatus(`Status: ${status}...`);
           }
@@ -163,8 +161,8 @@ export const HalyxisPlusView: React.FC = () => {
         imageUrl = await editImageWithWaveSpeed(
           originalImage,
           prompt,
-          enablePromptExpansion,
-          seed,
+          false, // enablePromptExpansion
+          -1, // seed (always -1 for random)
           (status) => {
             setLoadingStatus(`Status: ${status}...`);
           }
@@ -209,7 +207,7 @@ export const HalyxisPlusView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [originalImage, additionalImages, prompt, enablePromptExpansion, seed, aspectRatio]);
+  }, [originalImage, additionalImages, prompt, aspectRatio]);
 
   const originalImageDataUrl = originalImage
     ? `data:${originalImage.mimeType};base64,${originalImage.base64}`
@@ -227,11 +225,11 @@ export const HalyxisPlusView: React.FC = () => {
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></div>
               <h3 className="text-sm font-bold text-teal-400 uppercase tracking-widest">Halyxis+</h3>
-            </div>
+      </div>
             <p className="text-xs text-gray-400 leading-relaxed">
               Powered by WaveSpeed's advanced image editing API. Supports up to 3 input images for complex edits.
-            </p>
-          </div>
+      </p>
+    </div>
 
           {/* Image Upload Section */}
           <div className="flex flex-col gap-6">
@@ -275,38 +273,6 @@ export const HalyxisPlusView: React.FC = () => {
                 + Add Another Image (Max 3 total)
               </button>
             )}
-          </div>
-
-          {/* Advanced Options */}
-          <div className="bg-[#0f1115] border border-white/5 rounded-2xl p-6 space-y-4">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Advanced Options</h3>
-            
-            <div className="flex items-center justify-between">
-              <label htmlFor="prompt-expansion" className="text-sm text-gray-300 cursor-pointer">
-                Enable Prompt Expansion
-              </label>
-              <input
-                id="prompt-expansion"
-                type="checkbox"
-                checked={enablePromptExpansion}
-                onChange={(e) => setEnablePromptExpansion(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-600 bg-[#050608] text-teal-600 focus:ring-teal-500 focus:ring-offset-0"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="seed" className="block text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">
-                Seed (-1 for random)
-              </label>
-              <input
-                id="seed"
-                type="number"
-                value={seed}
-                onChange={(e) => setSeed(parseInt(e.target.value) || -1)}
-                className="w-full text-sm rounded-xl bg-[#050608] border border-white/10 text-gray-200 focus:ring-1 focus:ring-teal-500 focus:border-teal-500 py-2 px-4"
-                min={-1}
-              />
-            </div>
           </div>
 
           {/* Prompt Controls */}
