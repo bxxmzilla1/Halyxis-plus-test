@@ -183,17 +183,23 @@ export const HalyxisPlusView: React.FC = () => {
         source: 'wavespeed',
       };
       
-      console.log('Saving WaveSpeed history item:', newHistoryItem);
+      console.log('[HalyxisPlusView] Saving WaveSpeed history item:', {
+        id: newHistoryItem.id,
+        source: newHistoryItem.source,
+        prompt: newHistoryItem.prompt?.substring(0, 50),
+        imageUrl: newHistoryItem.imageUrl?.substring(0, 50) + '...',
+        aspectRatio: newHistoryItem.aspectRatio
+      });
       
       // Fire and forget save to DB
       saveHistoryItemToDb(newHistoryItem)
         .then(() => {
-          console.log('WaveSpeed history item saved successfully');
+          console.log('[HalyxisPlusView] WaveSpeed history item saved successfully, dispatching event');
           // Dispatch event to notify HistorySidebar
           window.dispatchEvent(new CustomEvent('wavespeedHistoryUpdated'));
         })
         .catch(err => {
-          console.error("Failed to save WaveSpeed history:", err);
+          console.error("[HalyxisPlusView] Failed to save WaveSpeed history:", err);
         });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';

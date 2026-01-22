@@ -190,17 +190,24 @@ export const getHistoryFromDb = async (source?: 'gemini' | 'wavespeed'): Promise
       request.onsuccess = () => {
         let items = request.result as HistoryItem[];
         
+        // Debug: Log all items and their sources
+        console.log(`[getHistoryFromDb] Total items in DB: ${items.length}`);
+        items.forEach((item, index) => {
+          console.log(`[getHistoryFromDb] Item ${index + 1}: id=${item.id?.substring(0, 20)}..., source=${item.source || 'undefined'}, prompt=${item.prompt?.substring(0, 30)}...`);
+        });
+        
         // Filter by source if specified
         if (source) {
+          const beforeFilter = items.length;
           items = items.filter(item => {
             const itemSource = item.source || 'gemini'; // Default to gemini for backward compatibility
             const matches = itemSource === source;
-            if (!matches && itemSource === 'wavespeed' && source === 'wavespeed') {
-              console.log('Filtered out item (wrong source):', item.id, 'has source:', item.source);
+            if (!matches) {
+              console.log(`[getHistoryFromDb] Filtered out item: id=${item.id?.substring(0, 20)}..., has source="${item.source || 'undefined'}", looking for "${source}"`);
             }
             return matches;
           });
-          console.log(`Filtered ${items.length} items for source: ${source} from ${request.result.length} total items`);
+          console.log(`[getHistoryFromDb] Filtered ${items.length} items for source: ${source} from ${beforeFilter} total items`);
         } else {
           // If no source specified, return all (for backward compatibility)
           // Items without source are assumed to be Gemini
