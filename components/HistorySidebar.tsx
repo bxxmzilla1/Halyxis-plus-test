@@ -117,31 +117,92 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         throw new Error('Invalid response from WaveSpeed API');
       }
 
-      // Filter for image-edit model and convert to HistoryItem format
+      // Filter for image-edit model
       const imageEditPredictions = result.data.items
         .filter((pred: WaveSpeedPrediction) => 
           pred.model && pred.model.includes('wan-2.6/image-edit')
         )
         .filter((pred: WaveSpeedPrediction) => 
           pred.status === 'completed' && pred.outputs && pred.outputs.length > 0
-        )
-        .map((pred: WaveSpeedPrediction): HistoryItem & { created_at?: string } => ({
-          id: pred.id,
-          imageUrl: pred.outputs![0], // Use first output
-          prompt: pred.input?.prompt || 'No prompt',
-          aspectRatio: '16:9' as const, // Default, could be extracted from input if available
-          source: 'wavespeed',
-          created_at: pred.created_at, // Store created_at for date display
-        }))
-        .sort((a, b) => {
-          // Sort by created_at descending (newest first)
-          const dateA = (a as any).created_at || '';
-          const dateB = (b as any).created_at || '';
-          return dateB.localeCompare(dateA);
-        });
+        );
 
-      console.log(`[HistorySidebar] Fetched ${imageEditPredictions.length} WaveSpeed predictions from API`);
-      return imageEditPredictions;
+      // Fetch individual prediction details to get full prompt information
+      // Process in batches to avoid overwhelming the API
+      const BATCH_SIZE = 10;
+      const predictionsWithPrompts: (HistoryItem & { created_at?: string })[] = [];
+
+      for (let i = 0; i < imageEditPredictions.length; i += BATCH_SIZE) {
+        const batch = imageEditPredictions.slice(i, i + BATCH_SIZE);
+        
+        const batchResults = await Promise.all(
+          batch.map(async (pred: WaveSpeedPrediction) => {
+            // If prompt is already in the list response, use it
+            if (pred.input?.prompt) {
+              return {
+                id: pred.id,
+                imageUrl: pred.outputs![0],
+                prompt: pred.input.prompt,
+                aspectRatio: '16:9' as const,
+                source: 'wavespeed' as const,
+                created_at: pred.created_at,
+              };
+            }
+
+            // Otherwise, fetch individual prediction details
+            try {
+              const detailResponse = await fetch(
+                `https://api.wavespeed.ai/api/v3/predictions/${pred.id}`,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                  },
+                }
+              );
+
+              if (detailResponse.ok) {
+                const detailResult = await detailResponse.json();
+                const detailData = detailResult.data || detailResult;
+                const prompt = detailData.input?.prompt || detailData.prompt || 'No prompt';
+                
+                return {
+                  id: pred.id,
+                  imageUrl: pred.outputs![0],
+                  prompt: prompt,
+                  aspectRatio: '16:9' as const,
+                  source: 'wavespeed' as const,
+                  created_at: pred.created_at,
+                };
+              }
+            } catch (err) {
+              console.warn(`[HistorySidebar] Failed to fetch details for prediction ${pred.id}:`, err);
+            }
+
+            // Fallback if detail fetch fails
+            return {
+              id: pred.id,
+              imageUrl: pred.outputs![0],
+              prompt: 'No prompt',
+              aspectRatio: '16:9' as const,
+              source: 'wavespeed' as const,
+              created_at: pred.created_at,
+            };
+          })
+        );
+
+        predictionsWithPrompts.push(...batchResults);
+      }
+
+      // Sort by created_at descending (newest first)
+      predictionsWithPrompts.sort((a, b) => {
+        const dateA = a.created_at || '';
+        const dateB = b.created_at || '';
+        return dateB.localeCompare(dateA);
+      });
+
+      console.log(`[HistorySidebar] Fetched ${predictionsWithPrompts.length} WaveSpeed predictions from API with prompts`);
+      return predictionsWithPrompts;
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch WaveSpeed predictions';
@@ -268,16 +329,16 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                 </svg>
               </button>
             )}
-            <button 
-              onClick={onClose} 
-              className="p-2 text-gray-500 hover:text-white transition-colors rounded-lg hover:bg-white/5"
-              aria-label="Close sidebar"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+          <button 
+            onClick={onClose} 
+            className="p-2 text-gray-500 hover:text-white transition-colors rounded-lg hover:bg-white/5"
+            aria-label="Close sidebar"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
           </div>
         </div>
 
@@ -353,7 +414,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                       )}
                       <div className="absolute top-2 right-2 flex gap-1">
                         <div className="bg-black/70 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">
-                          {item.aspectRatio}
+                        {item.aspectRatio}
                         </div>
                         {item.source === 'wavespeed' && (
                           <div className="bg-teal-900/70 backdrop-blur-md px-2 py-1 rounded text-[10px] font-bold text-teal-400 uppercase tracking-wider">
