@@ -158,16 +158,24 @@ const openDB = (): Promise<IDBDatabase> => {
 
 export const saveHistoryItemToDb = async (item: HistoryItem): Promise<void> => {
   try {
+    console.log('saveHistoryItemToDb called with item:', item);
     const db = await openDB();
     const tx = db.transaction(HISTORY_STORE, 'readwrite');
     const store = tx.objectStore(HISTORY_STORE);
     store.put(item);
     return new Promise((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        tx.oncomplete = () => {
+          console.log('History item saved to IndexedDB successfully:', item.id, 'source:', item.source);
+          resolve();
+        };
+        tx.onerror = () => {
+          console.error('IndexedDB transaction error:', tx.error);
+          reject(tx.error);
+        };
     });
   } catch (error) {
     console.error('Failed to save history item to IndexedDB:', error);
+    throw error;
   }
 };
 
