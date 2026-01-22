@@ -4,10 +4,10 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  server: {
-    port: 3000,
-    host: '0.0.0.0',
-  },
+      server: {
+        port: 3000,
+        host: '0.0.0.0',
+      },
   plugins: [
     react(),
     VitePWA({
@@ -74,9 +74,9 @@ export default defineConfig({
       }
     })
   ],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, '.'),
-    }
-  }
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '.'),
+        }
+      }
 });
