@@ -73,6 +73,9 @@ export const storeWaveSpeedPredictionId = (predictionId: string): void => {
     if (!existingIds.includes(predictionId)) {
       existingIds.push(predictionId);
       localStorage.setItem(WAVESPEED_PREDICTION_IDS_KEY, JSON.stringify(existingIds));
+      console.log('[storeWaveSpeedPredictionId] Stored prediction ID:', predictionId, 'Total IDs:', existingIds.length);
+    } else {
+      console.log('[storeWaveSpeedPredictionId] Prediction ID already stored:', predictionId);
     }
   } catch (error) {
     console.error('Failed to store prediction ID:', error);
