@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { XIcon } from './IconComponents';
 import type { HistoryItem } from '../types';
 import { getHistoryFromDb } from '../utils/storageUtils';
