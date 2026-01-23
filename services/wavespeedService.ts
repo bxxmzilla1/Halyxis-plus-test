@@ -1,5 +1,5 @@
 import { UploadedImage, AspectRatio } from "../types";
-import { getWaveSpeedApiKey } from "./apiKeyService";
+import { getWaveSpeedApiKey, storeWaveSpeedPredictionId } from "./apiKeyService";
 
 const WAVESPEED_API_BASE = 'https://api.wavespeed.ai/api/v3';
 const WAVESPEED_MODEL = 'alibaba/wan-2.6/image-edit';
@@ -289,6 +289,9 @@ export const editImageWithWaveSpeed = async (
       console.error('API response missing ID:', data);
       throw new Error('Invalid response from API: missing request ID. Please check the API response format.');
     }
+
+    // Store prediction ID for later fetching
+    storeWaveSpeedPredictionId(requestId);
 
     // Poll for the result
     if (onProgress) {

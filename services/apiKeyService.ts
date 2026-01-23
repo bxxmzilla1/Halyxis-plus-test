@@ -64,6 +64,31 @@ export const getWaveSpeedApiKey = (): string | undefined => {
   return getStoredWaveSpeedApiKey() || undefined;
 };
 
+// Store WaveSpeed prediction IDs for fetching later (since list endpoint doesn't exist)
+const WAVESPEED_PREDICTION_IDS_KEY = 'wavespeed_prediction_ids';
+
+export const storeWaveSpeedPredictionId = (predictionId: string): void => {
+  try {
+    const existingIds = getStoredWaveSpeedPredictionIds();
+    if (!existingIds.includes(predictionId)) {
+      existingIds.push(predictionId);
+      localStorage.setItem(WAVESPEED_PREDICTION_IDS_KEY, JSON.stringify(existingIds));
+    }
+  } catch (error) {
+    console.error('Failed to store prediction ID:', error);
+  }
+};
+
+export const getStoredWaveSpeedPredictionIds = (): string[] => {
+  try {
+    const stored = localStorage.getItem(WAVESPEED_PREDICTION_IDS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch (error) {
+    console.error('Failed to get stored prediction IDs:', error);
+    return [];
+  }
+};
+
 export const hasValidApiKey = async (): Promise<boolean> => {
   // Always return true to avoid blocking the UI.
   // The generation service will handle missing keys with specific error messages.

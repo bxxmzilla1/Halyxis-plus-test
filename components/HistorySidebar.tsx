@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { XIcon } from './IconComponents';
 import type { HistoryItem } from '../types';
 import { getHistoryFromDb } from '../utils/storageUtils';
-import { getWaveSpeedApiKey } from '../services/apiKeyService';
+import { getWaveSpeedApiKey, getStoredWaveSpeedPredictionIds } from '../services/apiKeyService';
 
 interface HistorySidebarProps {
   isOpen: boolean;
@@ -81,168 +81,78 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       setLoading(true);
       setError(null);
       
-      // Try the predictions endpoint - try multiple variations
-      const apiEndpoints = [
-        'https://api.wavespeed.ai/api/v3/predictions',
-        'https://api.wavespeed.ai/api/v3/predictions/',
-        'https://api.wavespeed.ai/api/v3/predictions?limit=100',
-      ];
+      // Since the /predictions list endpoint returns 404, fetch predictions individually by ID
+      // Get stored prediction IDs from localStorage
+      const predictionIds = getStoredWaveSpeedPredictionIds();
+      console.log('[HistorySidebar] Found', predictionIds.length, 'stored prediction IDs');
       
-      let response: Response | null = null;
-      let lastError: string = '';
+      if (predictionIds.length === 0) {
+        setWavespeedHistory([]);
+        setError('No predictions found. Generate images in Halyxis+ to see them here.');
+        return;
+      }
+
+      // Fetch each prediction individually from the API
+      const predictions: WaveSpeedPrediction[] = [];
       
-      for (const apiUrl of apiEndpoints) {
+      for (const predId of predictionIds) {
         try {
-          console.log('[HistorySidebar] Trying endpoint:', apiUrl);
-          console.log('[HistorySidebar] Using API key:', apiKey.substring(0, 10) + '...');
-          
-          response = await fetch(apiUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-          });
-          
-          console.log('[HistorySidebar] Response status for', apiUrl, ':', response.status, response.statusText);
-          
-          // If we get a successful response or a non-404 error, use this endpoint
-          if (response.ok || response.status !== 404) {
-            break;
-          }
-          
-          // If 404, try next endpoint
-          if (response.status === 404) {
-            const errorText = await response.text();
-            lastError = `404: ${errorText || 'Not found'}`;
-            console.warn('[HistorySidebar] Endpoint returned 404, trying next...');
-            response = null;
-            continue;
+          const response = await fetch(
+            `https://api.wavespeed.ai/api/v3/predictions/${predId}`,
+            {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            const data = result.data || result;
+            
+            // Only include completed predictions with outputs from the image-edit model
+            if (data.status === 'completed' && 
+                data.outputs && 
+                data.outputs.length > 0 &&
+                data.model && 
+                (data.model.includes('wan-2.6/image-edit') || data.model === 'alibaba/wan-2.6/image-edit')) {
+              predictions.push({
+                id: data.id || predId,
+                model: data.model,
+                status: data.status,
+                outputs: data.outputs,
+                created_at: data.created_at || '',
+                input: data.input,
+              });
+            }
+          } else if (response.status === 404) {
+            // Prediction might have expired (7 days) or been deleted, skip it
+            console.warn(`[HistorySidebar] Prediction ${predId} not found (may have expired)`);
           }
         } catch (err) {
-          console.warn('[HistorySidebar] Error trying endpoint', apiUrl, ':', err);
-          lastError = err instanceof Error ? err.message : String(err);
-          response = null;
-          continue;
-        }
-      }
-      
-      if (!response) {
-        throw new Error(`All prediction endpoints returned 404. The predictions list endpoint may not be available. Last error: ${lastError}`);
-      }
-
-      console.log('[HistorySidebar] API Response status:', response.status, response.statusText);
-      console.log('[HistorySidebar] Response headers:', Object.fromEntries(response.headers.entries()));
-
-      if (!response.ok) {
-        let errorMessage = '';
-        let errorText = '';
-        try {
-          errorText = await response.text();
-          console.error('[HistorySidebar] Error response body:', errorText);
-          try {
-            const errorJson = JSON.parse(errorText);
-            errorMessage = errorJson.error || errorJson.message || errorText;
-          } catch {
-            errorMessage = errorText || `HTTP ${response.status}`;
-          }
-        } catch (e) {
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        }
-
-        if (response.status === 401) {
-          throw new Error('Invalid API key. Please check your WaveSpeed API key in Creator Settings.');
-        }
-        if (response.status === 403) {
-          throw new Error('API key does not have permission to access predictions. Your API key may not have access to the predictions list endpoint.');
-        }
-        if (response.status === 404) {
-          // 404 could mean:
-          // 1. Endpoint doesn't exist
-          // 2. No predictions exist yet
-          // 3. Endpoint requires different path/parameters
-          console.warn('[HistorySidebar] 404 error - endpoint may not exist or require different parameters');
-          setWavespeedHistory([]);
-          setError('The predictions endpoint returned 404. This may mean: 1) The endpoint is not available for your API key, 2) You have no predictions yet, or 3) The API structure has changed. Please generate images in Halyxis+ to create predictions.');
-          return;
-        }
-        throw new Error(`Failed to load predictions (${response.status}): ${errorMessage}`);
-      }
-
-      const result: WaveSpeedPredictionsResponse = await response.json();
-      
-      console.log('[HistorySidebar] WaveSpeed API response:', result);
-      
-      // Handle response structure: could be { code: 200, data: [...] } or { data: { items: [...] } } or direct array
-      let predictions: WaveSpeedPrediction[] = [];
-      
-      // Check if result is directly an array
-      if (Array.isArray(result)) {
-        predictions = result;
-      } else if (result.data) {
-        if (Array.isArray(result.data)) {
-          predictions = result.data;
-        } else if (result.data.items && Array.isArray(result.data.items)) {
-          predictions = result.data.items;
+          console.warn(`[HistorySidebar] Failed to fetch prediction ${predId}:`, err);
         }
       }
 
-      console.log('[HistorySidebar] Parsed predictions from API:', predictions.length);
+      console.log('[HistorySidebar] Fetched', predictions.length, 'completed predictions from API');
+      
+      if (predictions.length === 0) {
+        setWavespeedHistory([]);
+        setError('No completed predictions found. Generate images in Halyxis+ to see them here.');
+        return;
+      }
 
-      // Filter for completed predictions with outputs from alibaba/wan-2.6/image-edit model
-      const completedPredictions = predictions
-        .filter((pred: WaveSpeedPrediction) => {
-          const isCompleted = pred.status === 'completed';
-          const hasOutputs = pred.outputs && pred.outputs.length > 0;
-          const isImageEditModel = pred.model && (
-            pred.model.includes('wan-2.6/image-edit') || 
-            pred.model === 'alibaba/wan-2.6/image-edit'
-          );
-          
-          return isCompleted && hasOutputs && isImageEditModel;
-        });
-
-      console.log('[HistorySidebar] Completed image-edit predictions from API:', completedPredictions.length);
-
-      // Convert API predictions to HistoryItem format
-      const historyItems: HistoryItem[] = await Promise.all(
-        completedPredictions.map(async (pred: WaveSpeedPrediction) => {
-          let prompt = pred.input?.prompt;
-          
-          // If prompt is missing, try to fetch individual prediction details
-          if (!prompt) {
-            try {
-              const detailResponse = await fetch(
-                `https://api.wavespeed.ai/api/v3/predictions/${pred.id}`,
-                {
-                  method: 'GET',
-                  headers: {
-                    'Authorization': `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json',
-                  },
-                }
-              );
-              
-              if (detailResponse.ok) {
-                const detailResult = await detailResponse.json();
-                const detailData = detailResult.data || detailResult;
-                prompt = detailData.input?.prompt || 'No prompt';
-              }
-            } catch (err) {
-              console.warn(`Failed to fetch prompt for prediction ${pred.id}:`, err);
-            }
-          }
-
-          return {
-            id: pred.id,
-            imageUrl: pred.outputs![0],
-            prompt: prompt || 'No prompt',
-            aspectRatio: '16:9' as const,
-            source: 'wavespeed' as const,
-            created_at: pred.created_at,
-          } as HistoryItem & { created_at?: string };
-        })
-      );
+      // Convert to HistoryItem format
+      const historyItems: HistoryItem[] = predictions.map((pred: WaveSpeedPrediction) => ({
+        id: pred.id,
+        imageUrl: pred.outputs![0],
+        prompt: pred.input?.prompt || 'No prompt',
+        aspectRatio: '16:9' as const,
+        source: 'wavespeed' as const,
+        created_at: pred.created_at,
+      } as HistoryItem & { created_at?: string }));
 
       // Sort by created_at descending (newest first)
       historyItems.sort((a, b) => {
@@ -256,12 +166,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
       setWavespeedHistory(historyItems);
       console.log('[HistorySidebar] Successfully loaded', historyItems.length, 'WaveSpeed predictions from API');
-      
-      if (historyItems.length === 0) {
-        setError('No predictions found. Generate images in Halyxis+ to see them here.');
-      } else {
-        setError(null);
-      }
+      setError(null);
     } catch (err) {
       console.error('[HistorySidebar] Failed to load WaveSpeed history:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to load WaveSpeed history';
