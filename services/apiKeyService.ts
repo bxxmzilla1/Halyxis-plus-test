@@ -68,6 +68,17 @@ export const getWaveSpeedApiKey = (): string | undefined => {
 const WAVESPEED_PREDICTION_IDS_KEY = 'wavespeed_prediction_ids';
 
 export const storeWaveSpeedPredictionId = (predictionId: string): void => {
+  // Validate prediction ID before storing
+  if (!predictionId || 
+      typeof predictionId !== 'string' || 
+      predictionId.trim().length === 0 ||
+      predictionId === 'invalid-id' ||
+      predictionId.includes('undefined') ||
+      predictionId.includes('null')) {
+    console.warn('[storeWaveSpeedPredictionId] Invalid prediction ID, skipping:', predictionId);
+    return;
+  }
+
   try {
     const existingIds = getStoredWaveSpeedPredictionIds();
     if (!existingIds.includes(predictionId)) {
@@ -85,7 +96,25 @@ export const storeWaveSpeedPredictionId = (predictionId: string): void => {
 export const getStoredWaveSpeedPredictionIds = (): string[] => {
   try {
     const stored = localStorage.getItem(WAVESPEED_PREDICTION_IDS_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const ids = stored ? JSON.parse(stored) : [];
+    
+    // Filter out invalid IDs
+    const validIds = ids.filter((id: any) => 
+      id && 
+      typeof id === 'string' && 
+      id.trim().length > 0 && 
+      id !== 'invalid-id' &&
+      !id.includes('undefined') &&
+      !id.includes('null')
+    );
+    
+    // If we filtered out invalid IDs, update storage
+    if (validIds.length !== ids.length) {
+      localStorage.setItem(WAVESPEED_PREDICTION_IDS_KEY, JSON.stringify(validIds));
+      console.log('[getStoredWaveSpeedPredictionIds] Cleaned up', ids.length - validIds.length, 'invalid IDs');
+    }
+    
+    return validIds;
   } catch (error) {
     console.error('Failed to get stored prediction IDs:', error);
     return [];

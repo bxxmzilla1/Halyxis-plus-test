@@ -92,10 +92,29 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         return;
       }
 
+      // Filter out invalid IDs before fetching
+      const validPredictionIds = predictionIds.filter(id => 
+        id && 
+        typeof id === 'string' && 
+        id.trim().length > 0 && 
+        id !== 'invalid-id' &&
+        !id.includes('undefined') &&
+        !id.includes('null')
+      );
+      
+      console.log('[HistorySidebar] Filtered', validPredictionIds.length, 'valid prediction IDs from', predictionIds.length, 'total');
+      
+      if (validPredictionIds.length === 0) {
+        setWavespeedHistory([]);
+        setError('No valid predictions found. Generate images in Halyxis+ to see them here.');
+        return;
+      }
+
       // Fetch each prediction individually from the API
       const predictions: WaveSpeedPrediction[] = [];
+      const invalidIds: string[] = [];
       
-      for (const predId of predictionIds) {
+      for (const predId of validPredictionIds) {
         try {
           const response = await fetch(
             `https://api.wavespeed.ai/api/v3/predictions/${predId}`,
@@ -128,11 +147,27 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
               });
             }
           } else if (response.status === 404) {
-            // Prediction might have expired (7 days) or been deleted, skip it
-            console.warn(`[HistorySidebar] Prediction ${predId} not found (may have expired)`);
+            // Prediction might have expired (7 days) or been deleted, mark for removal
+            console.warn(`[HistorySidebar] Prediction ${predId} not found (may have expired), will remove from storage`);
+            invalidIds.push(predId);
+          } else {
+            // Other errors (401, 403, etc.) - log but don't remove ID yet
+            console.warn(`[HistorySidebar] Failed to fetch prediction ${predId}: HTTP ${response.status}`);
           }
         } catch (err) {
           console.warn(`[HistorySidebar] Failed to fetch prediction ${predId}:`, err);
+          // Network errors - don't remove ID, might be temporary
+        }
+      }
+      
+      // Clean up invalid/expired IDs from storage
+      if (invalidIds.length > 0) {
+        const remainingIds = validPredictionIds.filter(id => !invalidIds.includes(id));
+        try {
+          localStorage.setItem('wavespeed_prediction_ids', JSON.stringify(remainingIds));
+          console.log('[HistorySidebar] Removed', invalidIds.length, 'invalid/expired prediction IDs from storage');
+        } catch (err) {
+          console.error('[HistorySidebar] Failed to clean up invalid IDs:', err);
         }
       }
 
