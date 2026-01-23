@@ -38,13 +38,6 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout, onToggleSidebar,
             >
                 <SettingsIcon className="w-5 h-5" />
             </button>
-            <button
-                onClick={onToggleHistory}
-                className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-                title="View History"
-            >
-                <HistoryIcon className="w-5 h-5" />
-            </button>
 
             <div className="hidden md:block text-sm text-gray-400 border-l border-white/10 pl-4 ml-1">
               Creator Workspace: <span className="font-semibold text-white">{user.name}</span>
