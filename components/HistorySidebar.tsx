@@ -81,23 +81,64 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       setLoading(true);
       setError(null);
       
-      const apiUrl = 'https://api.wavespeed.ai/api/v3/predictions';
-      console.log('[HistorySidebar] Fetching WaveSpeed predictions from API:', apiUrl);
+      // Try the predictions endpoint - try multiple variations
+      const apiEndpoints = [
+        'https://api.wavespeed.ai/api/v3/predictions',
+        'https://api.wavespeed.ai/api/v3/predictions/',
+        'https://api.wavespeed.ai/api/v3/predictions?limit=100',
+      ];
       
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      let response: Response | null = null;
+      let lastError: string = '';
+      
+      for (const apiUrl of apiEndpoints) {
+        try {
+          console.log('[HistorySidebar] Trying endpoint:', apiUrl);
+          console.log('[HistorySidebar] Using API key:', apiKey.substring(0, 10) + '...');
+          
+          response = await fetch(apiUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          console.log('[HistorySidebar] Response status for', apiUrl, ':', response.status, response.statusText);
+          
+          // If we get a successful response or a non-404 error, use this endpoint
+          if (response.ok || response.status !== 404) {
+            break;
+          }
+          
+          // If 404, try next endpoint
+          if (response.status === 404) {
+            const errorText = await response.text();
+            lastError = `404: ${errorText || 'Not found'}`;
+            console.warn('[HistorySidebar] Endpoint returned 404, trying next...');
+            response = null;
+            continue;
+          }
+        } catch (err) {
+          console.warn('[HistorySidebar] Error trying endpoint', apiUrl, ':', err);
+          lastError = err instanceof Error ? err.message : String(err);
+          response = null;
+          continue;
+        }
+      }
+      
+      if (!response) {
+        throw new Error(`All prediction endpoints returned 404. The predictions list endpoint may not be available. Last error: ${lastError}`);
+      }
 
       console.log('[HistorySidebar] API Response status:', response.status, response.statusText);
+      console.log('[HistorySidebar] Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         let errorMessage = '';
+        let errorText = '';
         try {
-          const errorText = await response.text();
+          errorText = await response.text();
           console.error('[HistorySidebar] Error response body:', errorText);
           try {
             const errorJson = JSON.parse(errorText);
@@ -113,15 +154,19 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           throw new Error('Invalid API key. Please check your WaveSpeed API key in Creator Settings.');
         }
         if (response.status === 403) {
-          throw new Error('API key does not have permission to access predictions.');
+          throw new Error('API key does not have permission to access predictions. Your API key may not have access to the predictions list endpoint.');
         }
         if (response.status === 404) {
-          // 404 means endpoint doesn't exist or no predictions
+          // 404 could mean:
+          // 1. Endpoint doesn't exist
+          // 2. No predictions exist yet
+          // 3. Endpoint requires different path/parameters
+          console.warn('[HistorySidebar] 404 error - endpoint may not exist or require different parameters');
           setWavespeedHistory([]);
-          setError('No predictions found. The API endpoint may not be available or you have no predictions yet.');
+          setError('The predictions endpoint returned 404. This may mean: 1) The endpoint is not available for your API key, 2) You have no predictions yet, or 3) The API structure has changed. Please generate images in Halyxis+ to create predictions.');
           return;
         }
-        throw new Error(`Failed to load predictions: ${errorMessage}`);
+        throw new Error(`Failed to load predictions (${response.status}): ${errorMessage}`);
       }
 
       const result: WaveSpeedPredictionsResponse = await response.json();
