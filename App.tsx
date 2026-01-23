@@ -7,10 +7,8 @@ import { ImageDisplay } from './components/ImageDisplay';
 import { editImageWithPrompt, editImageWithPromptOnly, editImageWithMultiplePeople } from './services/geminiService';
 import { fileToBase64, blobToBase64 } from './utils/fileUtils';
 import { isAIStudioEnvironment } from './services/apiKeyService';
-import type { UploadedImage, AspectRatio, EditMode, User, HistoryItem } from './types';
-import { AuthPage } from './components/AuthPage';
-import { LandingPage } from './components/LandingPage';
-import { getUserFromDb, saveHistoryItemToDb } from './utils/storageUtils';
+import type { UploadedImage, AspectRatio, EditMode, HistoryItem } from './types';
+import { saveHistoryItemToDb } from './utils/storageUtils';
 import { HistorySidebar } from './components/HistorySidebar';
 import { MinusCircleIcon } from './components/IconComponents';
 import { CreatorSettingsModal } from './components/CreatorSettingsModal';
@@ -19,8 +17,6 @@ import { AppSidebar } from './components/AppSidebar';
 import { HalyxisPlusView } from './components/HalyxisPlusView';
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [view, setView] = useState<'landing' | 'auth' | 'app'>('landing');
   const [mainView, setMainView] = useState<'halyxis' | 'halyxis+'>('halyxis');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -39,55 +35,28 @@ const App: React.FC = () => {
   const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
   const [isKeyReady, setIsKeyReady] = useState(false);
 
-  // Check for logged-in user session on initial load
+  // Check for API key readiness on initial load
   useEffect(() => {
-    const loggedInUserEmail = localStorage.getItem('ai_persona_currentUser');
-    if (loggedInUserEmail) {
-      const foundUser = getUserFromDb(loggedInUserEmail);
-      if (foundUser) {
-        setUser(foundUser);
-        setView('app'); // Go straight to the app if logged in
-      }
-    }
-  }, []);
-
-  // Check for API key readiness when the user enters the app view
-  useEffect(() => {
-    if (view === 'app' && user) {
-      const checkKey = async () => {
-        try {
-          // This gating is primarily for the AI Studio environment.
-          // In other environments, we'll rely on the settings modal.
-          if (isAIStudioEnvironment() && window.aistudio) {
-            const hasKey = await window.aistudio.hasSelectedApiKey();
-            setIsKeyReady(hasKey);
-          } else {
-            // For non-aistudio, we'll assume a key is present via settings/env.
-            // The app will show an error on generation failure if it's not.
-            setIsKeyReady(true);
-          }
-        } catch (error) {
-          console.error('Failed to check API key:', error);
-          // Default to true to allow app to continue
+    const checkKey = async () => {
+      try {
+        // This gating is primarily for the AI Studio environment.
+        // In other environments, we'll rely on the settings modal.
+        if (isAIStudioEnvironment() && window.aistudio) {
+          const hasKey = await window.aistudio.hasSelectedApiKey();
+          setIsKeyReady(hasKey);
+        } else {
+          // For non-aistudio, we'll assume a key is present via settings/env.
+          // The app will show an error on generation failure if it's not.
           setIsKeyReady(true);
         }
-      };
-      checkKey();
-    }
-  }, [view, user]);
-
-
-  const handleLogin = (loggedInUser: User) => {
-    setUser(loggedInUser);
-    localStorage.setItem('ai_persona_currentUser', loggedInUser.email);
-    setView('app');
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('ai_persona_currentUser');
-    setView('landing');
-  };
+      } catch (error) {
+        console.error('Failed to check API key:', error);
+        // Default to true to allow app to continue
+        setIsKeyReady(true);
+      }
+    };
+    checkKey();
+  }, []);
   
   const handleModeChange = (newMode: EditMode) => {
     setMode(newMode);
@@ -339,25 +308,16 @@ const App: React.FC = () => {
     setMainView('halyxis');
   }, []);
 
-  if (view === 'landing') {
-    return <LandingPage onGetStarted={() => setView('auth')} />;
+  if (!isKeyReady) {
+    // This view gates the app until a valid key is selected in AI Studio.
+    return (
+      <div className="min-h-screen bg-[#020408] flex items-center justify-center p-6">
+          <ApiKeySelector onKeySelected={() => setIsKeyReady(true)} />
+      </div>
+    );
   }
 
-  if (view === 'auth') {
-    return <AuthPage onLogin={handleLogin} />;
-  }
-  
-  if (view === 'app' && user) {
-    if (!isKeyReady) {
-      // This view gates the app until a valid key is selected in AI Studio.
-      return (
-        <div className="min-h-screen bg-[#020408] flex items-center justify-center p-6">
-            <ApiKeySelector onKeySelected={() => setIsKeyReady(true)} />
-        </div>
-      );
-    }
-    
-    const originalImageDataUrl = originalImage
+  const originalImageDataUrl = originalImage
       ? `data:${originalImage.mimeType};base64,${originalImage.base64}`
       : null;
       
@@ -396,8 +356,6 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#020408] text-gray-100 font-sans selection:bg-teal-500/30">
         <Header 
-          user={user} 
-          onLogout={handleLogout}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
           onToggleHistory={() => setIsHistorySidebarOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
@@ -533,14 +491,9 @@ const App: React.FC = () => {
         <CreatorSettingsModal 
             isOpen={isSettingsOpen} 
             onClose={() => setIsSettingsOpen(false)} 
-            userEmail={user.email}
         />
       </div>
     );
-  }
-
-  // Fallback for any unexpected state
-  return null;
 };
 
 export default App;

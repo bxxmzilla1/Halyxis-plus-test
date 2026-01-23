@@ -8,10 +8,9 @@ import { validateWaveSpeedApiKey } from '../services/wavespeedService';
 interface CreatorSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userEmail: string;
 }
 
-export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOpen, onClose, userEmail }) => {
+export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOpen, onClose }) => {
   const [apiKey, setApiKey] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
