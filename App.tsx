@@ -7,10 +7,11 @@ import { ImageDisplay } from './components/ImageDisplay';
 import { editImageWithPrompt, editImageWithPromptOnly, editImageWithMultiplePeople } from './services/geminiService';
 import { fileToBase64, blobToBase64 } from './utils/fileUtils';
 import { isAIStudioEnvironment } from './services/apiKeyService';
-import type { UploadedImage, AspectRatio, EditMode, User } from './types';
+import type { UploadedImage, AspectRatio, EditMode, User, HistoryItem } from './types';
 import { AuthPage } from './components/AuthPage';
 import { LandingPage } from './components/LandingPage';
-import { getUserFromDb } from './utils/storageUtils';
+import { getUserFromDb, saveHistoryItemToDb } from './utils/storageUtils';
+import { HistorySidebar } from './components/HistorySidebar';
 import { MinusCircleIcon } from './components/IconComponents';
 import { CreatorSettingsModal } from './components/CreatorSettingsModal';
 import { ApiKeySelector } from './components/ApiKeySelector';
@@ -35,6 +36,7 @@ const App: React.FC = () => {
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
   const [mode, setMode] = useState<EditMode>('reference');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
   const [isKeyReady, setIsKeyReady] = useState(false);
 
   // Check for logged-in user session on initial load
@@ -294,6 +296,24 @@ const App: React.FC = () => {
       const imageUrl = `data:image/png;base64,${newImageBase64}`;
       setGeneratedImage(imageUrl);
 
+      // Save to history
+      try {
+        const newHistoryItem: HistoryItem = {
+          id: new Date().toISOString() + Math.random(),
+          imageUrl: imageUrl,
+          referenceImageUrl: referenceImageDataUrl,
+          prompt: prompt,
+          aspectRatio: aspectRatio,
+          source: 'gemini',
+        };
+        
+        await saveHistoryItemToDb(newHistoryItem);
+        window.dispatchEvent(new CustomEvent('geminiHistoryUpdated'));
+      } catch (err) {
+        console.error('Failed to save history:', err);
+        // Don't block the UI if history save fails
+      }
+
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
         console.error(err);
@@ -310,6 +330,14 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   }, [originalImage, referenceImage, multiPersonImages, backgroundImage, prompt, aspectRatio, mode]);
+
+  const handleHistorySelect = useCallback((item: HistoryItem) => {
+    setGeneratedImage(item.imageUrl);
+    setPrompt(item.prompt);
+    setAspectRatio(item.aspectRatio);
+    setError(null);
+    setMainView('halyxis');
+  }, []);
 
   if (view === 'landing') {
     return <LandingPage onGetStarted={() => setView('auth')} />;
@@ -371,6 +399,7 @@ const App: React.FC = () => {
           user={user} 
           onLogout={handleLogout}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
+          onToggleHistory={() => setIsHistorySidebarOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
         
@@ -494,6 +523,12 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
+        
+        <HistorySidebar
+          isOpen={isHistorySidebarOpen}
+          onClose={() => setIsHistorySidebarOpen(false)}
+          onSelect={handleHistorySelect}
+        />
         
         <CreatorSettingsModal 
             isOpen={isSettingsOpen} 
