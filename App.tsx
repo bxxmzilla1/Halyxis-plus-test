@@ -7,11 +7,10 @@ import { ImageDisplay } from './components/ImageDisplay';
 import { editImageWithPrompt, editImageWithPromptOnly, editImageWithMultiplePeople } from './services/geminiService';
 import { fileToBase64, blobToBase64 } from './utils/fileUtils';
 import { isAIStudioEnvironment } from './services/apiKeyService';
-import type { UploadedImage, AspectRatio, HistoryItem, EditMode, User } from './types';
+import type { UploadedImage, AspectRatio, EditMode, User } from './types';
 import { AuthPage } from './components/AuthPage';
 import { LandingPage } from './components/LandingPage';
-import { getUserFromDb, saveHistoryItemToDb, getHistoryFromDb } from './utils/storageUtils';
-import { HistorySidebar } from './components/HistorySidebar';
+import { getUserFromDb } from './utils/storageUtils';
 import { MinusCircleIcon } from './components/IconComponents';
 import { CreatorSettingsModal } from './components/CreatorSettingsModal';
 import { ApiKeySelector } from './components/ApiKeySelector';
@@ -34,10 +33,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [wavespeedHistory, setWavespeedHistory] = useState<HistoryItem[]>([]);
   const [mode, setMode] = useState<EditMode>('reference');
-  const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isKeyReady, setIsKeyReady] = useState(false);
 
@@ -78,24 +74,6 @@ const App: React.FC = () => {
     }
   }, [view, user]);
 
-  // Load history from IndexedDB once user is logged in
-  useEffect(() => {
-    if (!user) return;
-    const loadHistory = async () => {
-      try {
-        const geminiHistory = await getHistoryFromDb('gemini');
-        const wavespeedHistory = await getHistoryFromDb('wavespeed');
-        setHistory(geminiHistory);
-        setWavespeedHistory(wavespeedHistory);
-      } catch (error) {
-        console.error('Failed to load history from IndexedDB:', error);
-        // Set empty arrays on error to prevent crashes
-        setHistory([]);
-        setWavespeedHistory([]);
-      }
-    };
-    loadHistory();
-  }, [user]);
 
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
@@ -315,25 +293,6 @@ const App: React.FC = () => {
       
       const imageUrl = `data:image/png;base64,${newImageBase64}`;
       setGeneratedImage(imageUrl);
-      
-      const newHistoryItem: HistoryItem = {
-        id: new Date().toISOString() + Math.random(),
-        imageUrl: imageUrl,
-        referenceImageUrl: referenceImageDataUrl, // This will be undefined for multi and prompt modes
-        prompt: prompt,
-        aspectRatio: aspectRatio,
-        source: 'gemini',
-      };
-      
-      const updatedHistory = [newHistoryItem, ...history];
-      setHistory(updatedHistory);
-      // Fire and forget save to DB
-      saveHistoryItemToDb(newHistoryItem)
-        .then(() => {
-          // Dispatch event to notify HistorySidebar
-          window.dispatchEvent(new CustomEvent('geminiHistoryUpdated'));
-        })
-        .catch(err => console.error("Failed to save history:", err));
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -350,15 +309,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [originalImage, referenceImage, multiPersonImages, backgroundImage, prompt, aspectRatio, history, mode]);
-  
-  const handleHistorySelect = useCallback((item: HistoryItem) => {
-    setGeneratedImage(item.imageUrl);
-    setPrompt(item.prompt);
-    setAspectRatio(item.aspectRatio);
-    setError(null);
-    setMainView('halyxis');
-  }, []);
+  }, [originalImage, referenceImage, multiPersonImages, backgroundImage, prompt, aspectRatio, mode]);
 
   if (view === 'landing') {
     return <LandingPage onGetStarted={() => setView('auth')} />;
@@ -420,34 +371,6 @@ const App: React.FC = () => {
           user={user} 
           onLogout={handleLogout}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
-          onToggleHistory={async () => {
-            try {
-              // Toggle sidebar immediately
-              setIsHistorySidebarOpen(prev => {
-                const newState = !prev;
-                // If opening, reload history in the background
-                if (newState) {
-                  getHistoryFromDb('gemini').then(geminiHistory => {
-                    setHistory(geminiHistory);
-                  }).catch(err => {
-                    console.error('Failed to load Gemini history:', err);
-                    setHistory([]);
-                  });
-                  getHistoryFromDb('wavespeed').then(wavespeedHistory => {
-                    setWavespeedHistory(wavespeedHistory);
-                  }).catch(err => {
-                    console.error('Failed to load WaveSpeed history:', err);
-                    setWavespeedHistory([]);
-                  });
-                }
-                return newState;
-              });
-            } catch (error) {
-              console.error('Error toggling history sidebar:', error);
-              // Still toggle the sidebar even if history loading fails
-              setIsHistorySidebarOpen(prev => !prev);
-            }
-          }}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
         
@@ -571,18 +494,6 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-        
-        <HistorySidebar
-          isOpen={isHistorySidebarOpen}
-          onClose={() => setIsHistorySidebarOpen(false)}
-          geminiHistory={history}
-          wavespeedHistory={wavespeedHistory}
-          onSelect={handleHistorySelect}
-          onHistoryUpdate={(gemini, wavespeed) => {
-            setHistory(gemini);
-            setWavespeedHistory(wavespeed);
-          }}
-        />
         
         <CreatorSettingsModal 
             isOpen={isSettingsOpen} 

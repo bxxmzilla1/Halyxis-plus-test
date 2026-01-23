@@ -1,17 +1,16 @@
 
 import React from 'react';
-import { SparklesIcon, LogOutIcon, HistoryIcon, SettingsIcon, MenuIcon } from './IconComponents';
+import { SparklesIcon, LogOutIcon, SettingsIcon, MenuIcon } from './IconComponents';
 import { User } from '../types';
 
 interface HeaderProps {
   user: User | null;
   onLogout: () => void;
   onToggleSidebar: () => void;
-  onToggleHistory: () => void;
   onOpenSettings: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ user, onLogout, onToggleSidebar, onToggleHistory, onOpenSettings }) => {
+export const Header: React.FC<HeaderProps> = ({ user, onLogout, onToggleSidebar, onOpenSettings }) => {
   return (
     <header className="h-20 bg-[#020408]/90 backdrop-blur-md border-b border-white/5 sticky top-0 z-20">
       <div className="container mx-auto px-6 h-full flex items-center justify-between">

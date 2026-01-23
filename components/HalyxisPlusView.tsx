@@ -6,8 +6,7 @@ import { ImageDisplay } from './ImageDisplay';
 import { editImageWithWaveSpeed, editImageWithWaveSpeedMultiple } from '../services/wavespeedService';
 import { fileToBase64, blobToBase64 } from '../utils/fileUtils';
 import { getWaveSpeedApiKey } from '../services/apiKeyService';
-import { saveHistoryItemToDb } from '../utils/storageUtils';
-import type { UploadedImage, AspectRatio, HistoryItem } from '../types';
+import type { UploadedImage, AspectRatio } from '../types';
 
 export const HalyxisPlusView: React.FC = () => {
   const [originalImage, setOriginalImage] = useState<UploadedImage | null>(null);
@@ -171,34 +170,6 @@ export const HalyxisPlusView: React.FC = () => {
 
       setGeneratedImage(imageUrl);
       setLoadingStatus('');
-
-      // Save to history
-      const newHistoryItem: HistoryItem = {
-        id: new Date().toISOString() + Math.random(),
-        imageUrl: imageUrl,
-        prompt: prompt,
-        aspectRatio: aspectRatio,
-        source: 'wavespeed',
-      };
-      
-      console.log('[HalyxisPlusView] Saving WaveSpeed history item:', {
-        id: newHistoryItem.id,
-        source: newHistoryItem.source,
-        prompt: newHistoryItem.prompt?.substring(0, 50),
-        imageUrl: newHistoryItem.imageUrl?.substring(0, 50) + '...',
-        aspectRatio: newHistoryItem.aspectRatio
-      });
-      
-      // Fire and forget save to DB
-      saveHistoryItemToDb(newHistoryItem)
-        .then(() => {
-          console.log('[HalyxisPlusView] WaveSpeed history item saved successfully, dispatching event');
-          // Dispatch event to notify HistorySidebar
-          window.dispatchEvent(new CustomEvent('wavespeedHistoryUpdated'));
-        })
-        .catch(err => {
-          console.error("[HalyxisPlusView] Failed to save WaveSpeed history:", err);
-        });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       console.error(err);
