@@ -4,29 +4,10 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  server: {
-    port: 3000,
-    host: '0.0.0.0',
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-        },
+      server: {
+        port: 3000,
+        host: '0.0.0.0',
       },
-    },
-    commonjsOptions: {
-      include: [/node_modules/],
-      transformMixedEsModules: true,
-    },
-    minify: 'esbuild',
-    sourcemap: false, // Disable sourcemaps in production to avoid initialization issues
-  },
-  optimizeDeps: {
-    include: ['react', 'react-dom'],
-    exclude: [],
-  },
   plugins: [
     react(),
     VitePWA({
