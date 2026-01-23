@@ -57,14 +57,20 @@ const App: React.FC = () => {
   useEffect(() => {
     if (view === 'app' && user) {
       const checkKey = async () => {
-        // This gating is primarily for the AI Studio environment.
-        // In other environments, we'll rely on the settings modal.
-        if (isAIStudioEnvironment() && window.aistudio) {
-          const hasKey = await window.aistudio.hasSelectedApiKey();
-          setIsKeyReady(hasKey);
-        } else {
-          // For non-aistudio, we'll assume a key is present via settings/env.
-          // The app will show an error on generation failure if it's not.
+        try {
+          // This gating is primarily for the AI Studio environment.
+          // In other environments, we'll rely on the settings modal.
+          if (isAIStudioEnvironment() && window.aistudio) {
+            const hasKey = await window.aistudio.hasSelectedApiKey();
+            setIsKeyReady(hasKey);
+          } else {
+            // For non-aistudio, we'll assume a key is present via settings/env.
+            // The app will show an error on generation failure if it's not.
+            setIsKeyReady(true);
+          }
+        } catch (error) {
+          console.error('Failed to check API key:', error);
+          // Default to true to allow app to continue
           setIsKeyReady(true);
         }
       };
@@ -76,10 +82,17 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     const loadHistory = async () => {
-      const geminiHistory = await getHistoryFromDb('gemini');
-      const wavespeedHistory = await getHistoryFromDb('wavespeed');
-      setHistory(geminiHistory);
-      setWavespeedHistory(wavespeedHistory);
+      try {
+        const geminiHistory = await getHistoryFromDb('gemini');
+        const wavespeedHistory = await getHistoryFromDb('wavespeed');
+        setHistory(geminiHistory);
+        setWavespeedHistory(wavespeedHistory);
+      } catch (error) {
+        console.error('Failed to load history from IndexedDB:', error);
+        // Set empty arrays on error to prevent crashes
+        setHistory([]);
+        setWavespeedHistory([]);
+      }
     };
     loadHistory();
   }, [user]);
@@ -408,24 +421,32 @@ const App: React.FC = () => {
           onLogout={handleLogout}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
           onToggleHistory={async () => {
-            // Toggle sidebar immediately
-            setIsHistorySidebarOpen(prev => {
-              const newState = !prev;
-              // If opening, reload history in the background
-              if (newState) {
-                getHistoryFromDb('gemini').then(geminiHistory => {
-                  setHistory(geminiHistory);
-                }).catch(err => {
-                  console.error('Failed to load Gemini history:', err);
-                });
-                getHistoryFromDb('wavespeed').then(wavespeedHistory => {
-                  setWavespeedHistory(wavespeedHistory);
-                }).catch(err => {
-                  console.error('Failed to load WaveSpeed history:', err);
-                });
-              }
-              return newState;
-            });
+            try {
+              // Toggle sidebar immediately
+              setIsHistorySidebarOpen(prev => {
+                const newState = !prev;
+                // If opening, reload history in the background
+                if (newState) {
+                  getHistoryFromDb('gemini').then(geminiHistory => {
+                    setHistory(geminiHistory);
+                  }).catch(err => {
+                    console.error('Failed to load Gemini history:', err);
+                    setHistory([]);
+                  });
+                  getHistoryFromDb('wavespeed').then(wavespeedHistory => {
+                    setWavespeedHistory(wavespeedHistory);
+                  }).catch(err => {
+                    console.error('Failed to load WaveSpeed history:', err);
+                    setWavespeedHistory([]);
+                  });
+                }
+                return newState;
+              });
+            } catch (error) {
+              console.error('Error toggling history sidebar:', error);
+              // Still toggle the sidebar even if history loading fails
+              setIsHistorySidebarOpen(prev => !prev);
+            }
           }}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
