@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { XIcon } from './IconComponents';
 import type { HistoryItem } from '../types';
 import { getHistoryFromDb } from '../utils/storageUtils';
-import { getWaveSpeedApiKey, getStoredWaveSpeedPredictionIds } from '../services/apiKeyService';
 
 interface HistorySidebarProps {
   isOpen: boolean;
@@ -10,47 +9,19 @@ interface HistorySidebarProps {
   onSelect: (item: HistoryItem) => void;
 }
 
-type TabType = 'gemini' | 'wavespeed';
-
-interface WaveSpeedPrediction {
-  id: string;
-  model: string;
-  status: 'created' | 'processing' | 'completed' | 'failed';
-  outputs?: string[];
-  created_at: string;
-  input?: {
-    prompt?: string;
-    images?: string[];
-    seed?: number;
-    enable_prompt_expansion?: boolean;
-  };
-  timings?: {
-    inference?: number;
-  };
-}
-
-interface WaveSpeedPredictionsResponse {
-  code?: number;
-  data?: WaveSpeedPrediction[] | {
-    items?: WaveSpeedPrediction[];
-  };
-}
-
 export const HistorySidebar: React.FC<HistorySidebarProps> = ({ 
   isOpen, 
   onClose, 
   onSelect
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('gemini');
   const [geminiHistory, setGeminiHistory] = useState<HistoryItem[]>([]);
-  const [wavespeedHistory, setWavespeedHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isLoadingRef = useRef(false);
 
   // Load Gemini history from IndexedDB
   const loadGeminiHistory = useCallback(async () => {
     try {
+      setLoading(true);
       setError(null);
       const history = await getHistoryFromDb('gemini');
       setGeminiHistory(history);
@@ -58,158 +29,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       console.error('Failed to load Gemini history:', err);
       setError('Failed to load history');
       setGeminiHistory([]);
-    }
-  }, []);
-
-  // Load WaveSpeed history from API only
-  const loadWaveSpeedHistory = useCallback(async () => {
-    // Prevent multiple simultaneous requests
-    if (isLoadingRef.current) {
-      console.log('[HistorySidebar] Already loading WaveSpeed history, skipping duplicate request');
-      return;
-    }
-
-    const apiKey = getWaveSpeedApiKey();
-    if (!apiKey) {
-      setWavespeedHistory([]);
-      setError('WaveSpeed API key not set. Please add your API key in Creator Settings.');
-      return;
-    }
-
-    try {
-      isLoadingRef.current = true;
-      setLoading(true);
-      setError(null);
-      
-      // Since the /predictions list endpoint returns 404, fetch predictions individually by ID
-      // Get stored prediction IDs from localStorage
-      const predictionIds = getStoredWaveSpeedPredictionIds();
-      console.log('[HistorySidebar] Found', predictionIds.length, 'stored prediction IDs');
-      
-      if (predictionIds.length === 0) {
-        setWavespeedHistory([]);
-        setError('No predictions found. Generate images in Halyxis+ to see them here.');
-        return;
-      }
-
-      // Filter out invalid IDs before fetching
-      const validPredictionIds = predictionIds.filter(id => 
-        id && 
-        typeof id === 'string' && 
-        id.trim().length > 0 && 
-        id !== 'invalid-id' &&
-        !id.includes('undefined') &&
-        !id.includes('null')
-      );
-      
-      console.log('[HistorySidebar] Filtered', validPredictionIds.length, 'valid prediction IDs from', predictionIds.length, 'total');
-      
-      if (validPredictionIds.length === 0) {
-        setWavespeedHistory([]);
-        setError('No valid predictions found. Generate images in Halyxis+ to see them here.');
-        return;
-      }
-
-      // Fetch each prediction individually from the API
-      const predictions: WaveSpeedPrediction[] = [];
-      const invalidIds: string[] = [];
-      
-      for (const predId of validPredictionIds) {
-        try {
-          const response = await fetch(
-            `https://api.wavespeed.ai/api/v3/predictions/${predId}`,
-            {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
-
-          if (response.ok) {
-            const result = await response.json();
-            const data = result.data || result;
-            
-            // Only include completed predictions with outputs from the image-edit model
-            if (data.status === 'completed' && 
-                data.outputs && 
-                data.outputs.length > 0 &&
-                data.model && 
-                (data.model.includes('wan-2.6/image-edit') || data.model === 'alibaba/wan-2.6/image-edit')) {
-              predictions.push({
-                id: data.id || predId,
-                model: data.model,
-                status: data.status,
-                outputs: data.outputs,
-                created_at: data.created_at || '',
-                input: data.input,
-              });
-            }
-          } else if (response.status === 404) {
-            // Prediction might have expired (7 days) or been deleted, mark for removal
-            console.warn(`[HistorySidebar] Prediction ${predId} not found (may have expired), will remove from storage`);
-            invalidIds.push(predId);
-          } else {
-            // Other errors (401, 403, etc.) - log but don't remove ID yet
-            console.warn(`[HistorySidebar] Failed to fetch prediction ${predId}: HTTP ${response.status}`);
-          }
-        } catch (err) {
-          console.warn(`[HistorySidebar] Failed to fetch prediction ${predId}:`, err);
-          // Network errors - don't remove ID, might be temporary
-        }
-      }
-      
-      // Clean up invalid/expired IDs from storage
-      if (invalidIds.length > 0) {
-        const remainingIds = validPredictionIds.filter(id => !invalidIds.includes(id));
-        try {
-          localStorage.setItem('wavespeed_prediction_ids', JSON.stringify(remainingIds));
-          console.log('[HistorySidebar] Removed', invalidIds.length, 'invalid/expired prediction IDs from storage');
-        } catch (err) {
-          console.error('[HistorySidebar] Failed to clean up invalid IDs:', err);
-        }
-      }
-
-      console.log('[HistorySidebar] Fetched', predictions.length, 'completed predictions from API');
-      
-      if (predictions.length === 0) {
-        setWavespeedHistory([]);
-        setError('No completed predictions found. Generate images in Halyxis+ to see them here.');
-        return;
-      }
-
-      // Convert to HistoryItem format
-      const historyItems: HistoryItem[] = predictions.map((pred: WaveSpeedPrediction) => ({
-        id: pred.id,
-        imageUrl: pred.outputs![0],
-        prompt: pred.input?.prompt || 'No prompt',
-        aspectRatio: '16:9' as const,
-        source: 'wavespeed' as const,
-        created_at: pred.created_at,
-      } as HistoryItem & { created_at?: string }));
-
-      // Sort by created_at descending (newest first)
-      historyItems.sort((a, b) => {
-        const dateA = (a as any).created_at || '';
-        const dateB = (b as any).created_at || '';
-        if (!dateA && !dateB) return 0;
-        if (!dateA) return 1;
-        if (!dateB) return -1;
-        return dateB.localeCompare(dateA);
-      });
-
-      setWavespeedHistory(historyItems);
-      console.log('[HistorySidebar] Successfully loaded', historyItems.length, 'WaveSpeed predictions from API');
-      setError(null);
-    } catch (err) {
-      console.error('[HistorySidebar] Failed to load WaveSpeed history:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load WaveSpeed history';
-      setError(errorMessage);
-      setWavespeedHistory([]);
     } finally {
       setLoading(false);
-      isLoadingRef.current = false;
     }
   }, []);
 
@@ -217,41 +38,25 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   useEffect(() => {
     if (isOpen) {
       loadGeminiHistory();
-      if (activeTab === 'wavespeed') {
-        loadWaveSpeedHistory();
-      }
     }
-  }, [isOpen, activeTab, loadGeminiHistory, loadWaveSpeedHistory]);
+  }, [isOpen, loadGeminiHistory]);
 
   // Listen for new history items
   useEffect(() => {
     const handleHistoryUpdate = () => {
-      if (isOpen && activeTab === 'gemini') {
+      if (isOpen) {
         loadGeminiHistory();
       }
     };
 
-    const handleApiKeySaved = () => {
-      // Refresh WaveSpeed history when API key is saved
-      // Always refresh if sidebar is open, or prepare for when user opens it
-      if (isOpen || activeTab === 'wavespeed') {
-        loadWaveSpeedHistory();
-      }
-    };
-
     window.addEventListener('geminiHistoryUpdated', handleHistoryUpdate);
-    window.addEventListener('wavespeedHistoryUpdated', loadWaveSpeedHistory);
-    window.addEventListener('wavespeedApiKeySaved', handleApiKeySaved);
 
     return () => {
       window.removeEventListener('geminiHistoryUpdated', handleHistoryUpdate);
-      window.removeEventListener('wavespeedHistoryUpdated', loadWaveSpeedHistory);
-      window.removeEventListener('wavespeedApiKeySaved', handleApiKeySaved);
     };
-  }, [isOpen, activeTab, loadGeminiHistory, loadWaveSpeedHistory]);
+  }, [isOpen, loadGeminiHistory]);
 
-  const currentHistory = activeTab === 'gemini' ? geminiHistory : wavespeedHistory;
-  const isEmpty = currentHistory.length === 0;
+  const isEmpty = geminiHistory.length === 0;
 
   const formatDate = (id: string) => {
     try {
@@ -301,33 +106,6 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-white/5">
-          <button
-            onClick={() => setActiveTab('gemini')}
-            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'gemini'
-                ? 'text-teal-400 border-b-2 border-teal-400 bg-teal-400/5'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            Gemini ({geminiHistory.length})
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('wavespeed');
-              // Always reload when switching to WaveSpeed tab to get latest data
-              loadWaveSpeedHistory();
-            }}
-            className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'wavespeed'
-                ? 'text-teal-400 border-b-2 border-teal-400 bg-teal-400/5'
-                : 'text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            WaveSpeed ({wavespeedHistory.length})
-          </button>
-        </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4">
@@ -341,7 +119,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             <div className="text-center py-12">
               <p className="text-red-400 text-sm mb-4">{error}</p>
               <button
-                onClick={() => activeTab === 'gemini' ? loadGeminiHistory() : loadWaveSpeedHistory()}
+                onClick={loadGeminiHistory}
                 className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors text-sm"
               >
                 Retry
@@ -352,24 +130,14 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           {!loading && !error && isEmpty && (
             <div className="text-center py-12">
               <p className="text-gray-400 text-sm">
-                No {activeTab === 'gemini' ? 'Gemini' : 'WaveSpeed'} history yet.
+                No Gemini history yet.
               </p>
-              {activeTab === 'wavespeed' && (
-                <div className="mt-3 space-y-1">
-                  <p className="text-gray-500 text-xs">
-                    Predictions are stored for 7 days on WaveSpeed servers.
-                  </p>
-                  <p className="text-gray-500 text-xs">
-                    Generate images in Halyxis+ to see them here.
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
           {!loading && !error && !isEmpty && (
             <div className="space-y-3">
-              {currentHistory.map((item) => (
+              {geminiHistory.map((item) => (
                 <div
                   key={item.id}
                   onClick={() => {
