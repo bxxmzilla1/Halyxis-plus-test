@@ -4,10 +4,22 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
+  server: {
+    port: 3000,
+    host: '0.0.0.0',
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+        },
       },
+    },
+    commonjsOptions: {
+      include: [/node_modules/],
+    },
+  },
   plugins: [
     react(),
     VitePWA({
