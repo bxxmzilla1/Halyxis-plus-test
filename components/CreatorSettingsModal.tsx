@@ -142,28 +142,6 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
         </div>
 
         <div className="p-6 sm:p-8 space-y-8 overflow-y-auto custom-scrollbar">
-            {/* Plan Status */}
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Current Plan</h3>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-900/20 text-teal-400 border border-teal-500/20 text-xs font-bold uppercase tracking-wider">
-                        <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse"></span>
-                        Active
-                    </span>
-                </div>
-                <div className="bg-[#050608] border border-white/5 rounded-2xl p-6 flex items-center justify-between">
-                    <div>
-                        <h4 className="text-lg font-bold text-white mb-1">Creator Plan</h4>
-                        <p className="text-gray-400 text-sm">$89.00 / month</p>
-                    </div>
-                    <div className="text-right">
-                         <button className="text-sm text-gray-400 hover:text-white border-b border-gray-600 hover:border-white transition-colors pb-0.5">
-                            Manage Subscription
-                         </button>
-                    </div>
-                </div>
-            </div>
-
              {/* Rendering Engine Configuration */}
              <div className="space-y-4">
                 <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Rendering Infrastructure</h3>
@@ -354,7 +332,7 @@ export const CreatorSettingsModal: React.FC<CreatorSettingsModalProps> = ({ isOp
                     </svg>
                  </div>
                  <p className="text-xs text-gray-400 leading-relaxed">
-                    You are currently on the <span className="text-white font-bold">Creator Plan</span>. This workspace is configured for unlimited, unmetered generation throughput using your BYO Key credentials.
+                    This workspace is configured for unlimited, unmetered generation throughput using your BYO Key credentials.
                  </p>
             </div>
         </div>
