@@ -408,12 +408,24 @@ const App: React.FC = () => {
           onLogout={handleLogout}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
           onToggleHistory={async () => {
-            // Reload history when opening sidebar
-            const geminiHistory = await getHistoryFromDb('gemini');
-            const wavespeedHistory = await getHistoryFromDb('wavespeed');
-            setHistory(geminiHistory);
-            setWavespeedHistory(wavespeedHistory);
-            setIsHistorySidebarOpen(true);
+            // Toggle sidebar immediately
+            setIsHistorySidebarOpen(prev => {
+              const newState = !prev;
+              // If opening, reload history in the background
+              if (newState) {
+                getHistoryFromDb('gemini').then(geminiHistory => {
+                  setHistory(geminiHistory);
+                }).catch(err => {
+                  console.error('Failed to load Gemini history:', err);
+                });
+                getHistoryFromDb('wavespeed').then(wavespeedHistory => {
+                  setWavespeedHistory(wavespeedHistory);
+                }).catch(err => {
+                  console.error('Failed to load WaveSpeed history:', err);
+                });
+              }
+              return newState;
+            });
           }}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
