@@ -46,6 +46,7 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
   const [wavespeedHistory, setWavespeedHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isLoadingRef = useRef(false);
 
   // Load Gemini history from IndexedDB
   const loadGeminiHistory = useCallback(async () => {
@@ -62,17 +63,28 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
   // Load WaveSpeed history from API
   const loadWaveSpeedHistory = useCallback(async () => {
+    // Prevent multiple simultaneous requests
+    if (isLoadingRef.current) {
+      console.log('[HistorySidebar] Already loading WaveSpeed history, skipping duplicate request');
+      return;
+    }
+
     const apiKey = getWaveSpeedApiKey();
     if (!apiKey) {
       setWavespeedHistory([]);
+      setError('WaveSpeed API key not set. Please add your API key in Creator Settings.');
       return;
     }
 
     try {
+      isLoadingRef.current = true;
       setLoading(true);
       setError(null);
       
-      const response = await fetch('https://api.wavespeed.ai/api/v3/predictions', {
+      const apiUrl = 'https://api.wavespeed.ai/api/v3/predictions';
+      console.log('[HistorySidebar] Fetching WaveSpeed predictions from:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -80,16 +92,38 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         },
       });
 
+      console.log('[HistorySidebar] Response status:', response.status, response.statusText);
+
       if (!response.ok) {
+        let errorMessage = '';
+        try {
+          const errorText = await response.text();
+          console.error('[HistorySidebar] Error response body:', errorText);
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.error || errorJson.message || errorText;
+          } catch {
+            errorMessage = errorText || `HTTP ${response.status}`;
+          }
+        } catch (e) {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+
         if (response.status === 401) {
-          throw new Error('Invalid API key. Please check your WaveSpeed API key.');
+          throw new Error('Invalid API key. Please check your WaveSpeed API key in Creator Settings.');
+        }
+        if (response.status === 403) {
+          throw new Error('API key does not have permission to access predictions.');
         }
         if (response.status === 404) {
-          // API endpoint might not exist or no predictions yet
+          // 404 could mean endpoint doesn't exist, or no predictions yet
+          // Try to provide helpful message
+          console.warn('[HistorySidebar] 404 error - endpoint might not exist or account has no predictions');
+          setError('No predictions found. Generate images in Halyxis+ to see them here.');
           setWavespeedHistory([]);
           return;
         }
-        throw new Error(`API error: ${response.status}`);
+        throw new Error(`Failed to load predictions: ${errorMessage}`);
       }
 
       const result: WaveSpeedPredictionsResponse = await response.json();
@@ -188,12 +222,15 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       });
 
       setWavespeedHistory(historyItems);
+      console.log('[HistorySidebar] Successfully loaded', historyItems.length, 'WaveSpeed predictions');
     } catch (err) {
-      console.error('Failed to load WaveSpeed history:', err);
-      setError('Failed to load WaveSpeed history');
+      console.error('[HistorySidebar] Failed to load WaveSpeed history:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load WaveSpeed history';
+      setError(errorMessage);
       setWavespeedHistory([]);
     } finally {
       setLoading(false);
+      isLoadingRef.current = false;
     }
   }, []);
 
