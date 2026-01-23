@@ -94,10 +94,15 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
 
       const result: WaveSpeedPredictionsResponse = await response.json();
       
-      // Handle response structure: could be { code: 200, data: [...] } or { data: { items: [...] } }
+      console.log('[HistorySidebar] WaveSpeed API response:', result);
+      
+      // Handle response structure: could be { code: 200, data: [...] } or { data: { items: [...] } } or direct array
       let predictions: WaveSpeedPrediction[] = [];
       
-      if (result.data) {
+      // Check if result is directly an array
+      if (Array.isArray(result)) {
+        predictions = result;
+      } else if (result.data) {
         if (Array.isArray(result.data)) {
           predictions = result.data;
         } else if (result.data.items && Array.isArray(result.data.items)) {
@@ -105,15 +110,32 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
         }
       }
 
-      // Filter for completed predictions with outputs
-      // Support both wan-2.6/image-edit and other image models
+      console.log('[HistorySidebar] Parsed predictions:', predictions.length);
+
+      // Filter for completed predictions with outputs from alibaba/wan-2.6/image-edit model
       const completedPredictions = predictions
-        .filter((pred: WaveSpeedPrediction) => 
-          pred.status === 'completed' &&
-          pred.outputs &&
-          pred.outputs.length > 0 &&
-          pred.model // Ensure model exists
-        );
+        .filter((pred: WaveSpeedPrediction) => {
+          const isCompleted = pred.status === 'completed';
+          const hasOutputs = pred.outputs && pred.outputs.length > 0;
+          const isImageEditModel = pred.model && (
+            pred.model.includes('wan-2.6/image-edit') || 
+            pred.model === 'alibaba/wan-2.6/image-edit'
+          );
+          
+          if (!isCompleted) {
+            console.log(`[HistorySidebar] Filtered out prediction ${pred.id}: status=${pred.status}`);
+          }
+          if (!hasOutputs) {
+            console.log(`[HistorySidebar] Filtered out prediction ${pred.id}: no outputs`);
+          }
+          if (!isImageEditModel) {
+            console.log(`[HistorySidebar] Filtered out prediction ${pred.id}: model=${pred.model}`);
+          }
+          
+          return isCompleted && hasOutputs && isImageEditModel;
+        });
+
+      console.log('[HistorySidebar] Completed image-edit predictions:', completedPredictions.length);
 
       // Fetch individual prediction details if prompt is missing (some models don't include prompt in list)
       const historyItems: HistoryItem[] = await Promise.all(
@@ -150,16 +172,18 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
             prompt: prompt || 'No prompt',
             aspectRatio: '16:9' as const,
             source: 'wavespeed' as const,
-          };
+            created_at: pred.created_at, // Preserve created_at for sorting
+          } as HistoryItem & { created_at?: string };
         })
       );
 
       // Sort by created_at descending (newest first)
       historyItems.sort((a, b) => {
-        const predA = completedPredictions.find(p => p.id === a.id);
-        const predB = completedPredictions.find(p => p.id === b.id);
-        const dateA = predA?.created_at || '';
-        const dateB = predB?.created_at || '';
+        const dateA = (a as any).created_at || '';
+        const dateB = (b as any).created_at || '';
+        if (!dateA && !dateB) return 0;
+        if (!dateA) return 1;
+        if (!dateB) return -1;
         return dateB.localeCompare(dateA);
       });
 
