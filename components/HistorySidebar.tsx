@@ -127,12 +127,22 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       }
     };
 
+    const handleApiKeySaved = () => {
+      // Refresh WaveSpeed history when API key is saved
+      // Always refresh if sidebar is open, or prepare for when user opens it
+      if (isOpen || activeTab === 'wavespeed') {
+        loadWaveSpeedHistory();
+      }
+    };
+
     window.addEventListener('geminiHistoryUpdated', handleHistoryUpdate);
     window.addEventListener('wavespeedHistoryUpdated', loadWaveSpeedHistory);
+    window.addEventListener('wavespeedApiKeySaved', handleApiKeySaved);
 
     return () => {
       window.removeEventListener('geminiHistoryUpdated', handleHistoryUpdate);
       window.removeEventListener('wavespeedHistoryUpdated', loadWaveSpeedHistory);
+      window.removeEventListener('wavespeedApiKeySaved', handleApiKeySaved);
     };
   }, [isOpen, activeTab, loadGeminiHistory, loadWaveSpeedHistory]);
 
@@ -202,9 +212,8 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
           <button
             onClick={() => {
               setActiveTab('wavespeed');
-              if (wavespeedHistory.length === 0) {
-                loadWaveSpeedHistory();
-              }
+              // Always reload when switching to WaveSpeed tab to get latest data
+              loadWaveSpeedHistory();
             }}
             className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
               activeTab === 'wavespeed'
