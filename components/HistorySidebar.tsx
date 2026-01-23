@@ -15,11 +15,24 @@ type TabType = 'gemini' | 'wavespeed';
 interface WaveSpeedPrediction {
   id: string;
   model: string;
-  status: string;
+  status: 'created' | 'processing' | 'completed' | 'failed';
   outputs?: string[];
   created_at: string;
   input?: {
     prompt?: string;
+    images?: string[];
+    seed?: number;
+    enable_prompt_expansion?: boolean;
+  };
+  timings?: {
+    inference?: number;
+  };
+}
+
+interface WaveSpeedPredictionsResponse {
+  code?: number;
+  data?: WaveSpeedPrediction[] | {
+    items?: WaveSpeedPrediction[];
   };
 }
 
@@ -68,34 +81,85 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Invalid API key. Please check your WaveSpeed API key.');
+        }
+        if (response.status === 404) {
+          // API endpoint might not exist or no predictions yet
+          setWavespeedHistory([]);
+          return;
+        }
         throw new Error(`API error: ${response.status}`);
       }
 
-      const result = await response.json();
-      const data = result.data || result;
-      const items = data.items || [];
+      const result: WaveSpeedPredictionsResponse = await response.json();
+      
+      // Handle response structure: could be { code: 200, data: [...] } or { data: { items: [...] } }
+      let predictions: WaveSpeedPrediction[] = [];
+      
+      if (result.data) {
+        if (Array.isArray(result.data)) {
+          predictions = result.data;
+        } else if (result.data.items && Array.isArray(result.data.items)) {
+          predictions = result.data.items;
+        }
+      }
 
-      // Filter for completed image-edit predictions
-      const imageEditPredictions = items
+      // Filter for completed predictions with outputs
+      // Support both wan-2.6/image-edit and other image models
+      const completedPredictions = predictions
         .filter((pred: WaveSpeedPrediction) => 
-          pred.model?.includes('wan-2.6/image-edit') &&
           pred.status === 'completed' &&
-          pred.outputs?.length > 0
+          pred.outputs &&
+          pred.outputs.length > 0 &&
+          pred.model // Ensure model exists
         );
 
-      // Convert to HistoryItem format
-      const historyItems: HistoryItem[] = imageEditPredictions.map((pred: WaveSpeedPrediction) => ({
-        id: pred.id,
-        imageUrl: pred.outputs![0],
-        prompt: pred.input?.prompt || 'No prompt',
-        aspectRatio: '16:9' as const,
-        source: 'wavespeed' as const,
-      }));
+      // Fetch individual prediction details if prompt is missing (some models don't include prompt in list)
+      const historyItems: HistoryItem[] = await Promise.all(
+        completedPredictions.map(async (pred: WaveSpeedPrediction) => {
+          let prompt = pred.input?.prompt;
+          
+          // If prompt is missing, try to fetch individual prediction details
+          if (!prompt) {
+            try {
+              const detailResponse = await fetch(
+                `https://api.wavespeed.ai/api/v3/predictions/${pred.id}`,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                  },
+                }
+              );
+              
+              if (detailResponse.ok) {
+                const detailResult = await detailResponse.json();
+                const detailData = detailResult.data || detailResult;
+                prompt = detailData.input?.prompt || 'No prompt';
+              }
+            } catch (err) {
+              console.warn(`Failed to fetch prompt for prediction ${pred.id}:`, err);
+            }
+          }
 
-      // Sort by created_at descending
+          return {
+            id: pred.id,
+            imageUrl: pred.outputs![0],
+            prompt: prompt || 'No prompt',
+            aspectRatio: '16:9' as const,
+            source: 'wavespeed' as const,
+          };
+        })
+      );
+
+      // Sort by created_at descending (newest first)
       historyItems.sort((a, b) => {
-        const dateA = (a as any).created_at || '';
-        const dateB = (b as any).created_at || '';
+        const predA = completedPredictions.find(p => p.id === a.id);
+        const predB = completedPredictions.find(p => p.id === b.id);
+        const dateA = predA?.created_at || '';
+        const dateB = predB?.created_at || '';
         return dateB.localeCompare(dateA);
       });
 
@@ -251,9 +315,14 @@ export const HistorySidebar: React.FC<HistorySidebarProps> = ({
                 No {activeTab === 'gemini' ? 'Gemini' : 'WaveSpeed'} history yet.
               </p>
               {activeTab === 'wavespeed' && (
-                <p className="text-gray-500 text-xs mt-2">
-                  Predictions are stored for 7 days on WaveSpeed servers.
-                </p>
+                <div className="mt-3 space-y-1">
+                  <p className="text-gray-500 text-xs">
+                    Predictions are stored for 7 days on WaveSpeed servers.
+                  </p>
+                  <p className="text-gray-500 text-xs">
+                    Generate images in Halyxis+ to see them here.
+                  </p>
+                </div>
               )}
             </div>
           )}
