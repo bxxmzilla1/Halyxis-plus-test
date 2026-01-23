@@ -18,7 +18,14 @@ export default defineConfig({
     },
     commonjsOptions: {
       include: [/node_modules/],
+      transformMixedEsModules: true,
     },
+    minify: 'esbuild',
+    sourcemap: false, // Disable sourcemaps in production to avoid initialization issues
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom'],
+    exclude: [],
   },
   plugins: [
     react(),
