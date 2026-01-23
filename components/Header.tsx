@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { SparklesIcon, LogOutIcon, SettingsIcon, MenuIcon } from './IconComponents';
+import { SparklesIcon, LogOutIcon, SettingsIcon, MenuIcon, HistoryIcon } from './IconComponents';
 import { User } from '../types';
 
 interface HeaderProps {
